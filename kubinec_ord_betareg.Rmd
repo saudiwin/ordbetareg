@@ -1,0 +1,1303 @@
+---
+title: "Ordered Beta Regression: A Parsimonious, Well-Fitting Model for Zero-One Inflated Proportional Outcomes"
+bibliography: "/Users/rmk/firmbook/BibTexDatabase.bib"
+output: 
+  bookdown::pdf_document2:
+      includes:
+        in_header: preamble.tex
+
+abstract: "I propose a new model, ordered beta regression, for outcomes that are bounded between 0 and 1 (or any two constants) but also have substantial numbers of observations at the boundaries. This model employs the cutpoint technique popularized by ordered logit to simultaneously estimate the probability that the outcome is 0, 1 or any continuous number in between. This model is contrasted with existing approaches, including OLS, outcomes transformed to the (0,1) interval and outcomes with 0s and 1s removed, zero-one-inflated beta regression (ZOIB), and the continuous ordinal model. The proposed approach estimates effects with more accuracy while capturing the full dynamics of the distribution. Simulation studies illustrate the performance of the estimator while empirical examples are drawn from opinion data concerning feeling thermometer ratings towards President Donald Trump."
+---
+
+```{r setup, include=F}
+
+require(rstan)
+require(dplyr)
+require(rstanarm)
+require(tidyr)
+require(lubridate)
+require(loo)
+require(kableExtra)
+require(bayesplot)
+
+knitr::opts_chunk$set(echo=F,warning=F,message=F)
+
+source("helper_func.R")
+
+rstan_options(auto_write=T)
+
+zoib_model <- stan_model("zoib_nophireg.stan")
+ord_beta_mod <- stan_model("beta_logit.stan")
+ord_beta_mod_infl <- stan_model("beta_logit_infl_simple.stan")
+ord_beta_mod_phi <- stan_model("beta_logit_phireg.stan")
+
+# whether to fit all models
+run_model <- T
+
+# to reproduce results, change if you want fresh sampling
+
+random_seed <- 77123101
+
+```
+
+
+# Introduction
+
+The increasing sophistification of data collection in the social, medical and behavioral sciences in the last twenty years has led to adoption of slider and visual analog scales as a way to capture nuanced information from human respondents. A visual analog scale (VAS) is a continuous scale with potentially an infinite number of points along which a respondent may make a selection (though in practice, as many as 100 points are often used). As such, it can record much more variation than a Likert scale, which rarely has more than ten categories.
+
+However, despite the increasing popularity of these scales, the statistical methodology used to analyze them is still very much in development. While practicioners often fall back on ordinary least squares (OLS) as a convenient and easily interpretable way to analyze the data, in reality these slider scales are rarely Normally-distributed. Respondents often locate responses at either end of the scale, leading to bi- or even tri-modal distributions. As the Normal distribution is by nature symmetric and unimodal, OLS cannot capture the dynamics of the distribution very well, leading to distorted confidence/uncertainty intervals, as I show in this paper. 
+
+The most natural alternative, and one that has been used in the literature since @ferrari2010, is the beta regression model. While this clever parameterization permits powerful inference on these bounded, potentially bi-modal distributions, the beta regression's main flaw is that it cannot model observations that are degenerate, i.e., either 0 or 1. Various solutions have been proposed,  such as transforming the outcome so that all observations are strictly less than 0 or 1 [@verk2006], modeling 0s and 1s through separate processes via zero-one inflated beta regression (ZOIB) [@ferrari2012], and continuous ordinal regression, a semi-parametric model employing splines [.
+
+A new approach is given in this paper that seeks to capture the best points of the existing approaches while simplifying the model so that it is maximally efficient in its use of information in the data. I employ ordered cutpoints, similar in spirit to an ordered logit model, to estimate the joint probability of 0s, continuous proportions, and 1s in VAS/slider scale data. As only one predictive model is used for all of the outcomes, the effect of covariates is identified with greater precision than existing approaches. The use of cutpoints, on the other hand, permits the model to fit even very degenerate distributions. 
+
+To compare this new model, simulations are employed to examine how each of the previous approaches compares along an array of criteria, including root mean squared error (RMSE), bias, variance, skewness, kurtosis, and the uncertainty and bias in the estimation of marginal effects defined over the whole distribution. The results show that while OLS is able to compete in the RMSE category, it fails at capturing higher-order moments of the distribution, suggesting that the uncertainty intervals it produces are inadequate descriptions of the data-generating process. The ordered beta regression model avoids this bias but is competitive with OLS in RMSE while producing more precise and accurate marginal effects than the other alternatives. 
+
+To apply the model, I use data from the Pew Research Forum American Trends Panel survey of U.S. residents to examine the drivers of affect towards President Trump. As the survey employs feeling thermometers, a type of VAS scale that is bounded at 0 and 100, the issue of responses at either end of the scale is a pronounced problem, particularly for polarizing figures like U.S. President Trump.
+
+# Background
+
+As online and digital data collection possibilities increase, so has the employment of slider scales capable of capturing finely nuanced datasets along a dimension of interest. While too broad to list all the possible applications here, slider/VAS scales have been employed prominently in medical pain research, psychological research, political science and economics. As the possibilities of dynamic interactive instruments increases, these scales are likely to become even more sophisticated, such as permitting respondents to rank options along the continuous scale. As such, it is an important empirical domain for applied statistical analysis, and one that has only been treated briefly, as discussed earlier. 
+
+The standard approach for modeling this type of variable is OLS regression as the variable is at least in part continuous. OLS, as the maximum entropy estimator for any continuous distribution with finite variance, is likely to capture at least some of the relevant features of the distribution. The more "Normal" the distribution, the more likely this approximation will give interpretable answers. However, @verk2006 raise important questions about this application of OLS to upper and lower-bounded dependent variables. They argue that OLS' failure to capture higher-order moments of the distribution represents a serious shortcoming because these moments, such as skewness and variance, may well affect what can be learned from the model and even the theoretical questions one can ask.
+
+As a result, beta regression has become an increasingly popular technique, though it likely is still a minority preference when handling this particular kind of outcome. The main drawback of beta regression, as mentioned earlier, is that it cannot handle 0s and 1s. The reason for this limitation is that the beta distribution can be understood as the prior conjugate distribution for a binomial probability, which is never strictly equal to 0 or 1. However, while probability theory discounts such extreme events from ocurring, human beings are much less sanguine. Particularly when there is a reason to expect extreme stimuli in the population of interest, humans have no qualms about expressing complete uncertainty in either a positive or negative direction. 
+
+There are two straightforward ways to handle zeros and ones. The first is to simply drop these responses and model the remaining data. If the count of 0s and/or 1s in the data is small, this strategy would seem reasonable. However, this naturally represents an unfortunate loss of data that will only get worse as the number of 1s and 0s increases. A more sophisticated strategy is to normalize the outcome within a set of bounds that are close to, but never equal to, one. The formula from @verk2006 that has received considerable attention from researchers is as follows. For a given outcome $y_i \in [0,1]$, $i \in \{1,2, ... N\}$, define a normalized outcome $y_j$:
+
+$$
+y_j = \frac{y_i(N-1) + 0.5}{N}
+$$
+
+The distribution of $y_i$ is nudged so that the values can never reach 0 or 1. This transformation permits beta regression modeling without any need for further modeling choices. As such, it is a computationally simple and straightforward solution. However, it is not immediately clear what ramifications this transformation has on inferences as the transformation is non-linear. Ultimately, and as I show in this paper, this transformation effectively hides the problem by moving the goal posts without improving the underlying model.
+
+The shortfall in existing strategies is what led to the development of the zero-one inflated beta regression model, an approach that this paper builds upon. While @ferrari2012 proposed a zero or one-inflated beta regression, where a discrete process could be used to model either category separately, @liu2015 show how to model both 0s and 1s in a zero-one inflated beta regression model with two distinct processes for degenerate responses. Their approach is worth considering in detail as it offers a convenient jumping off position for the model I intend to explicate. Considering the same outcome $y_i$, they estimate three separate probabilities which I label as $\alpha$ for $Pr(y_i=0)$, $\gamma$ for $Pr(y_i=1)$, and $\delta$ for $Pr(y_i>0 \cap y_i<1)$. Given these probabilities, we can define a conditional distribution over $y_i$ that depends on the realization of $y_i$ in these three mutually exclusive outcomes, along with parameters $\mu$ and $\phi$ to model the continuous outcomes via the Beta distribution (defined below):
+
+\begin{equation}
+f(y_i|\alpha,\gamma,\delta,\mu,\phi) = \left\{\begin{array}{lr}
+\alpha & \text{if } y_i=0\\
+(1-\alpha)\gamma & \text{if } y_i=1\\
+(1-\alpha)(1-\gamma)\text{Beta}(\mu,\phi) & \text{if } y_i \in (0,1)\\
+\end{array}\right\}
+(\#eq:zoib)
+\end{equation}
+
+where the Beta distribution is defined in as follows:
+
+\begin{equation}
+f(y_i \in (0,1); \omega,\tau) = \frac{\Gamma(\omega + \tau)}{\Gamma(\omega)\Gamma(\tau)}y_i^{\omega-1}(1-y_i)^{\tau-1} 
+(\#eq:beta)
+\end{equation}
+
+We directly model the mean of the beta distribution by substituting for the shape parameters $\omega$ and $\tau$:
+
+\begin{equation}
+\mu = \frac{\omega}{\omega+\tau}\\
+\phi = \omega + \tau
+\end{equation}
+
+Given this transformation, we can directly model the expected value of the Beta distribution, $\mu$. Returning to the ZOIB model in \@ref(eq:zoib), we can see that the Beta distribution is being deflated by the probabilities $\alpha$ and $\gamma$ such that the density of the Beta distribution cannot exceed $(1-\alpha)(1-\gamma)$, i.e., $\delta$. To parameterize the model, we can include regressors $\alpha = g(X'\beta_\alpha)$,  $\gamma = X'\beta_\gamma$,  and $\mu=g(X'\beta_\delta)$ for a given matrix of covariates $X$. These linear models are rescaled with the inverse logit function $g(\cdot)$ to map on to $(0,1)$. While the covariates $X$ for each of the sub-models could be different or shared, the parameters $\beta_\alpha$, $\beta_\gamma$, and $\beta_\delta$ need to be distinct for each sub-model as the three processes are functionally independent. These categories are not ordered, and as such the outcomes of $y_i$ are exchangeable (can be re-ordered) for any given value of $\alpha$, $\gamma$ and $\delta$. 
+
+While this point is rather subtle, it is very important for the modeling exercise that follows. It is possible in this model for $Pr(y_i=0)$ and $Pr(y_i=1)$ to both increase independently of $Pr(y_i>0 \cap y_i<1)$. This independence can isolate heterogeneity in either end of the slider scale such that the decision to choose a 1 or a 0 are distinct choices with no necessary connection to each other.
+
+This exchangeability, however, comes at a cost. As the number of covariates $X$ increases, the number of parameters necessarily triples (assuming that all covariates are used to predict all parts of the model). The independence between sub models means that $X$ could positively predict $Pr(y_i=0)$ and negatively predict $Pr(y_i=1)$ in the same model without contradiction. While this formulation is potentially quite powerful, and it solves the problems of fit and ad-hoc transformations mentioned earlier, it results in a model that does not have a single effect of $X$ and has an abundance of parameters. 
+
+As such, the model seems to go beyond what many practitioners want from the model, which is the ability to evaluate the ability of covariates of interest to affect the combined distribution of $y_i$. The functional independence of outcomes, while a potentially powerful way to examine in depth the processes that lead to degenerate outcomes, is not necessarily the object of interest to scholars who collect this data. There should be a way to more parsimoniously handle the inflation of 0s and 1s without needing to have exchangeable outcomes. The probabilities of the three categories do not need to be independent since the same set of respondents in a survey or treatment group are all employing the same scale to produce the outcome in question. 
+
+# Model
+
+To resolve this problem, I present **ordered** beta regression. The main difference between this approach and the ZOIB model is to induce dependence between the three probabilities $\alpha$, $\gamma$ and $\delta$. I borrow ideas from the literature on the ordered (cumulative) logit model [@ologit1980]. We can think of the distribution of $y_i$ as being a realization of a latent cumulative distribution function $F(y_i^*)$ defined by a set of ordered cutpoints $k \in \{1,2\}$. As we only have one latent variable $y_i^*$, we can also have a single set of regressors $X'\beta$ that predict this latent variable. At very low values of $y_i^*$, we will have a discrete outcome $y_i=0$, and at very high values of $y_i^*$ we will have a discrete outcome $y=1$. For intermediate values of $y_i^*$ we will have the Beta-distributed outcome $y_i \in (0,1)$. This latent ordering is similar to the continuous ordinal model mentioned previously [CITE].
+
+Using $y_i^*$ and cutpoints $k$, we can now re-defined the probabilities $\alpha$,$\gamma$ and $\delta$ where:
+
+\begin{equation}
+\left\{\begin{array}{lr}
+\alpha = 1 - g(X'\beta - k_1)\\
+\delta = \left[g(X'\beta - k_1) - g(X'\beta - k_2) \right ] \text{Beta}(g(X'\beta),\phi)\\
+\gamma = g(X'\beta - k_2)\\
+\end{array}\right\}
+(\#eq:redef)
+\end{equation}
+
+We can see that we can still obtain the necessary probabilities $\alpha$, $\gamma$ and $\delta$ to combine the 0s, 1s, and proportions into a single distribution. However, unlike in \@ref(eq:zoib), the probabilities are no longer exchangable, but rather ordered due to the cutpoints. The position of the cutpoints $k_1$ and $k_2$ will affect each outcome by either decreasing or increasing the probability of that outcome occurring. As $k_1$ increases, $Pr(y_i=0)$ must increase and $Pr(y_i>0 \cap y_i<1)$ must decrease. Similarly, an increase in $k_2$ will necessarily make $Pr(y_i=1)$ decrease and increase $Pr(y_i>0 \cap y_i<1)$. 
+
+The use of ordered cutpoints further implies that separate intercepts are no longer necessary for the linear model as in \@ref(eq:zoib). The linear model is defined implicitly relative to the cutpoints on $y_i^*$ so that no further parameters are needed. This implication of using ordered cutpoints means that only two parameters, the cutpoints themselves, are required in addition to the auxiliary parameter $\phi$. Thus only two parameters more than OLS are required to fit this model, improving efficiency and information retrieval.
+
+We can express the model as a log-likelihood for a given distribution of $y_i$:
+
+\begin{equation}
+ll(y_i|K,\beta,\phi) = \sum_{i=1}^N\left\{\begin{array}{lr}
+\text{log } \left[1 - g(X'\beta - k_1)\right] & \text{if } y_i=0\\
+\text{log }\left[g(X'\beta - k_1) - g(X'\beta - k_2) \right ] \text{Beta}(g(X'\beta),\phi) & \text{if } y_i \in (0,1)\\
+\text{log }g(X'\beta - k_2) & \text{if } y_i=1\\
+\end{array}\right\}
+(\#eq:ll)
+\end{equation}
+
+To consider the model from a Bayesian perspective, we can assign weakly informative priors to the parameters. We define these as:
+
+\begin{align}
+\beta &\sim N(0,5)\\
+\phi &\sim E(1)\\
+k_2 - k_1 &\sim N(0,5)\\
+(\#eq:prior)
+\end{align}
+
+I define a difference prior over the cutpoints $K$ because it is difficult to know a priori the location of $k_1$ and $k_2$. The weakly informative prior on the difference implies that we expect the difference to lie somewhere between $[-5,+5]$ on the logit scale, which is quite wide. Similarly, the prior on $\beta$ is weakly informative on the logit scale. The exponential prior on $\phi$ similarly puts prior mass on a wide range of values due to its long tail. 
+
+We can further consider parameterizing $\phi$ to model higher moments in the distribution. A higher value of $\phi$ for a given value of $\mu$ is associated with extreme values, either 0, 1 or both depending on the value of $\mu$. This kind of information can be useful to analyze in a context where understanding which respondents/subjects tend to choose middle versus extreme values is a research question of interest. To do so we simply replace $\phi$ in \@ref(eq:ll) with a set of regressors $\beta_\phi$ and a covariate matrix $X$ (the covariates could be shared or different from those used to predict the mean of the distribution). Fitting covariates to $\phi$ can also dramatically improve the fit of the model as is shown in the empirical example. 
+
+I can now define a joint log posterior distribution over $y_i$ conditional on the log-likelihood function and set of parameters:
+
+\begin{equation}
+\text{log } p(K,\beta,\phi|y_i) \propto \sum_{i=1}^N \text{ log }p(K) + \text{ log }p(\beta) + \text{ log }p(\phi) + ll(y_i|K,\beta,\phi)
+(\#eq:logp)
+\end{equation}
+
+where $\propto$ indicates that the posterior is calculated proportional to the normalizing constant. 
+
+
+# Estimation
+
+Estimation of the model is done using Hamiltonian Markov Chain Monte Carlo with the software Stan [@CarpenterGelmanHoffmanEtAl2017]. The model converges fairly rapidly with less than 1,000 iterations on simulated data. In addition to sampling the model above, I also draw from the posterior-predictive distribution of $y_i$, denoted $\int_\Theta p(\tilde{y_i}|\theta)p(\theta|y_i)\text{d}\theta$, conditional on the posterior estimate of the model paramters (denoted $\theta$) at a given number of MCMC draws $S$. To do so I first sample a categorical outcome $y_{repO} \in \{1,2,3\}$ based on an ordered categorical tuple of the probabilities $\alpha$, $\gamma$ and $\delta$:
+
+\begin{equation}
+y_{repO}^s \sim \text{Cat}(\{1,2,3\},\{\alpha^s,\delta^s,\gamma^s\})
+(\#eq:yrepo)
+\end{equation}
+
+If $y_{repO}^s$ is equal to 1 or 3, then assign 0 and 1 respectively to $y_{rep}^s$:
+
+\begin{align}
+y_{rep}^s = 0& \text{ if } y_{repO} = 1\\
+y_{rep}^s = 1& \text{ if } y_{rep)} = 3
+\end{align}
+
+I then draw from the Beta distribution if $y_{repO}=2$. 
+
+\begin{equation}
+y_rep^s \sim \text{Beta}(\mu_s,\phi_s) 
+\end{equation}
+
+In addition to this predictive distribution, I also examine measures of model fit. I use an estimate of leave-one-out (LOO) predictive density in which the posterior predictive distribution is evaluated by dropping a data point $y_i$, estimating the model, and predicting the held out $y_i$. Given that this measure is computationally challenging with Bayesian inference, I employ an approximation from @gelman2016, the Pareto-stabilized important sampling (PSIS)-LOO predictive density:
+
+\begin{equation}
+\hat{elpd}_{psis_loo} = \sum_{i=1}^N \text{log } \left( \frac{\sum_{s=1}^S \omega_i^s p(y_i|\theta^s)}{\sum_{s=1}^S \omega_i^s} \right)
+(\#eq:psis)
+\end{equation}
+
+The $\omega_i$ are weights derived from importance sampling of the joint posterior for each data point $y_i$ and smoothed by the Pareto distribution to account for outliers. The resulting quantity can be interpreted as the log density of a future dataset $\tilde{y}_i$ from the "true" data-generating process. Importantly, this quantity can be evaluated on any of the models discussed so long as the same data are used to fit the model. 
+
+Finally, I also estimate sample average marginal effects for each parameter $c$ in $\beta$ on the expected value of $y_i$. I evaluate these marginal effects through numerical differentation of $\frac{\partial E(y_i|\beta_{-c},K)}{\partial \beta_c}$, iterating over all elements $c$ in $\beta$. I suppress $\phi$ in the notation because it does not by definition factor into the calculation of the expected value.  
+
+# Simulations
+
+To compare the models, I simulate data in a manner consistent with the posterior predictive distribution defined in the previous section. Because the results of simulations can be sensitive to the particular values of parameters, I draw from a broad range of possible values to simulate the ordered beta regression model. 
+
+I compare the simulations based on a range of criteria, including $\hat{elpd}_{PSIS-LOO}$, root mean squared error (RMSE), bias relative to the "true" marginal effect, bias relative to the "true" value of $\beta$, and higher sample moments including variance, skewness and kurtosis. The marginal effects are all calculated via numerical differentiation, which enables me to directly compare the different models. All models are estimated using Stan to ensure comparability in terms of estimation, and each MCMC run has 1000 total iterations with 500 samples discarded as warmup.
+
+# Empirical Examples
+
+To analyze the model in an applied setting I use data from the Pew Forum American Trends Panel. This survey tracks a sample of Americans over time on a variety of political and social opinions. In this section I study the August 2017 wave of the panel, which consisted of 4,971 U.S. adults via an online sampling frame. As I am interested in studying the effect of certain variables on an outcome in the survey rather than making population inference via sample propotions, I ignore the sampling design in the analysis that follows.\footnote{As variables that affect sample inclusion, such as education and political affiliation, enter into the model, sample inclusion probabilities are implicitly controlled for when calculating the effects of interest.}
+
+The main dependent variable of interest is a feeling thermometer question in which respondents were asked to rate a number of different social actors based on a 0 to 100 scale, where higher values indicate warmer feelings. The thermometer I will analyze is the respondents' affect towards college professors. As this thermometer was only shown to half of the panel, the final dataset amounts to 2,538 complete obvservations. A histogram of the dependent variable is shown in Figure \@ref(fig:loaddata).
+
+
+```{r loaddata,fig.caption="Feeling Thermometer Scores for College Professors from the August 2017 wave of the Pew Forum American Trends Panel"}
+
+pew <- haven::read_sav("data/W28_Aug17/ATP W28.sav") %>% 
+  mutate(therm=na_if(THERMO_THERMBC_W28,999)) %>% 
+  filter(!is.na(therm))
+
+bind_rows(list(tibble(therm=pew$therm,
+                 Type="Full\nDistribution"),
+          tibble(therm=pew$therm[pew$therm>0 & pew$therm<1],
+                Type="Continuous\nDistribution"),
+          tibble(therm=pew$therm[pew$therm>0 & pew$therm<1 & pew$therm!=0.5],
+                 Type="Continuous\nWithout Midpoint"))) %>% 
+  ggplot(aes(x=therm)) +
+  geom_histogram() +
+  theme_minimal() + 
+  theme(panel.grid=element_blank()) +
+  scale_x_continuous(breaks=c(0,25,50,75,100),
+                     labels=c("0","Colder","50","Warmer","100")) +
+  ylab("") +
+  facet_wrap(~Type) +
+  xlab("") +
+  labs(caption=paste0("Figure shows the distribution of ",sum(!is.na(pew$therm))," non-missing survey responses."))
+
+ggsave("college_prof.png",width=7,height=4,units="in",scale=1.1)
+
+```
+
+Figure \@ref(fig:loaddata) reveals some of the very common issues with these sorts of scales with human subjects. The distribution is effectively tri-modal, with a large number of respondents with presumably neutral (50) feelings. A sizable minority have very strong feelngs in favor of college professors (perhaps a relief to many of the readers of this article), with a second mode at or near 100. Finally, there is a thankfully smaller yet still noticeable mode at 0. I will consider each of the strategies attempted in the simulation to model this dependent variable effectively given a set of covariates relevant to socio-political opinion, including age, sex, race, party identification, political ideology, income, approval of President Donald Trump and (of course) education.
+
+```{r fitordreg}
+
+  # need a completed dataset with all of the covariates
+  require(haven)
+
+  model_data <- select(pew,therm,age="F_AGECAT_FINAL",
+                        sex="F_SEX_FINAL",
+                        income="F_INCOME_FINAL",
+                        ideology="F_IDEO_FINAL",
+                        race="F_RACETHN_RECRUITMENT",
+                        education="F_EDUCCAT2_FINAL",
+                        approval="POL1DT_W28",
+                       born_again="F_BORN_FINAL",
+                       relig="F_RELIG_FINAL",
+                        news="NEWS_PLATFORMA_W28") %>% 
+    mutate_all(zap_missing) %>% 
+  mutate(therm=(therm - min(therm,na.rm = T))/(max(therm,na.rm=T) - 
+                                                       min(therm,na.rm = T)),
+         therm_rescale=(therm * (sum(!is.na(therm))-1) + 0.5)/sum(!is.na(therm)),
+         news=as_factor(news,levels="labels"),
+         age=c(scale(age)),
+         race=as_factor(race,levels="labels"),
+         ideology=as_factor(ideology,levels="labels"),
+         income=as_factor(income,levels="labels"),
+         approval=as_factor(approval,levels="labels"),
+         sex=as_factor(sex,levels="labels"),
+         education=as_factor(education,levels="labels"),
+         born_again=as_factor(born_again,levels="labels"),
+         relig=as_factor(relig,levels="labels")) %>% 
+    mutate_at(c("race","ideology","income","approval","sex","education","born_again","relig"), function(c) {
+      factor(c, exclude=levels(c)[length(levels(c))])
+    }) %>% 
+    drop_na
+
+  model_data_prop <- filter(model_data,therm>0,therm<1)
+  model_data_degen <- filter(model_data,therm==0|therm==1)
+  
+  X_prop <- model.matrix(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data_prop)[,-1]
+  # don't drop the intercept for the inflation model
+  X_prop_miss <- model.matrix(therm~education + news,data=model_data_prop)
+  X_degen_miss <- model.matrix(therm~education + news,data=model_data_degen)
+  X_prop_phi <- model.matrix(therm~ideology+ age,data=model_data_prop)
+  X_degen_phi <- model.matrix(therm~ideology + age,data=model_data_degen)
+  X_degen <- model.matrix(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data_degen)[,-1]
+
+  to_bl <- list(N_degen=nrow(model_data_degen),
+                N_prop=nrow(model_data_prop),
+                X=ncol(X_prop),
+                X_miss=0,
+                infl_value=-1,
+                outcome_prop=model_data_prop$therm,
+                outcome_degen=model_data_degen$therm,
+                covar_prop=X_prop,
+                covar_degen=X_degen,
+                covar_prop_infl=array(0,dim=c(nrow(model_data_prop),0)),
+                covar_degen_infl=array(0,dim=c(nrow(model_data_degen),0)),
+                N_pred_degen=nrow(model_data_degen),
+                N_pred_prop=nrow(model_data_prop),
+                indices_degen=1:nrow(model_data_degen),
+                indices_prop=1:nrow(model_data_prop),
+                run_gen=1)
+  
+  if(run_model) {
+    fit_pew <- sampling(ord_beta_mod, 
+                        seed=random_seed,
+                        data=to_bl,chains=2,cores=2,iter=2000)
+  
+    saveRDS(fit_pew,"data/fit_pew.rds")
+  } else {
+    fit_pew <- readRDS("data/fit_pew.rds")
+  }
+  
+  # do an inflated version
+  
+  to_bl_infl <- list(N_degen=nrow(model_data_degen),
+                N_prop=nrow(model_data_prop),
+                X=ncol(X_prop),
+                X_miss=ncol(X_prop_miss),
+                infl_value=0.5,
+                outcome_prop=model_data_prop$therm,
+                outcome_degen=model_data_degen$therm,
+                covar_prop=X_prop,
+                covar_degen=X_degen,
+                covar_prop_infl=X_prop_miss,
+                covar_degen_infl=X_degen_miss,
+                N_pred_degen=nrow(model_data_degen),
+                N_pred_prop=nrow(model_data_prop),
+                indices_degen=1:nrow(model_data_degen),
+                indices_prop=1:nrow(model_data_prop),
+                run_gen=1)
+  
+  
+  if(run_model) {
+    fit_pew_infl <- sampling(ord_beta_mod, 
+                        seed=random_seed,
+                        data=to_bl_infl,chains=2,cores=2,iter=2000)
+  
+    saveRDS(fit_pew_infl,"data/fit_pew_infl.rds")
+  } else {
+    fit_pew_infl <- readRDS("data/fit_pew_infl.rds")
+  }
+  
+  # finally try phireg model
+  
+  to_bl_phireg <- list(N_degen=nrow(model_data_degen),
+                N_prop=nrow(model_data_prop),
+                X=ncol(X_prop),
+                X_miss=ncol(X_prop_miss),
+                infl_value=0.5,
+                outcome_prop=model_data_prop$therm,
+                outcome_degen=model_data_degen$therm,
+                covar_prop=X_prop,
+                covar_degen=X_degen,
+                covar_prop_phi=X_prop_phi,
+                covar_degen_phi=X_degen_phi,
+                N_pred_degen=nrow(model_data_degen),
+                N_pred_prop=nrow(model_data_prop),
+                indices_degen=1:nrow(model_data_degen),
+                indices_prop=1:nrow(model_data_prop),
+                run_gen=1)
+  
+  
+  if(run_model) {
+    fit_pew_infl <- sampling(ord_beta_mod, 
+                        seed=random_seed,
+                        data=to_bl_infl,chains=2,cores=2,iter=2000)
+  
+    fit_saveRDS(fit_pew_infl,"data/fit_pew_infl.rds")
+  } else {
+    fit_pew_infl <- readRDS("data/fit_pew_infl.rds")
+  }
+  
+  
+  
+  
+  cutpoints_est <- as.matrix(fit_pew,"cutpoints")
+  X_beta_ord <- as.matrix(fit_pew,"X_beta")
+  yrep_ord <- as.matrix(fit_pew,"regen_all")
+  
+# iterate over columns to get marginal effects
+
+mat_data <- rbind(X_degen,X_prop)
+
+all_vars_ord <- lapply(1:ncol(mat_data),function(c) {
+  
+  if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- 0
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- 1
+  } else {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
+  }
+  
+  
+  
+  margin_ord <- sapply(1:nrow(X_beta_ord), function(i,this_col) {
+    y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+                          X=pred_data_low,
+                          X_beta=X_beta_ord[i,])
+    
+    y1 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+                          X=pred_data_high,
+                          X_beta=X_beta_ord[i,])
+    
+    marg_eff <- (y1-y0)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    
+    mean(marg_eff)
+  },c)
+  
+  tibble(marg=margin_ord,variable=colnames(mat_data)[c])
+}) %>% bind_rows
+
+# now for inflated model
+
+cutpoints_est_infl <- as.matrix(fit_pew_infl,"cutpoints")
+  X_beta_ord_infl <- as.matrix(fit_pew_infl,"X_beta")
+ # X_beta_ord_miss <- as.matrix(fit_pew_infl,"X_beta_miss")
+  yrep_ord_infl <- as.matrix(fit_pew_infl,"regen_all")
+  
+# iterate over columns to get marginal effects
+  
+mat_data_miss <- rbind(X_degen_miss,X_prop_miss)
+
+all_vars_ord_infl <- lapply(1:ncol(mat_data),function(c) {
+  
+  if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- 0
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- 1
+    
+    pred_data_high_miss <- mat_data_miss
+    
+    pred_data_low_miss <- mat_data_miss
+    
+    if(colnames(mat_data)[c] %in% colnames(mat_data_miss)) {
+      
+      k <- which(colnames(mat_data_miss)==c)
+      
+      pred_data_high_miss[,k] <- 0
+
+      pred_data_low_miss[,k] <- 1
+    } 
+    
+  } else {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
+    
+    pred_data_high_miss <- mat_data_miss
+    
+    pred_data_low_miss <- mat_data_miss
+    
+    if(colnames(mat_data)[c] %in% colnames(mat_data_miss)) {
+      
+      k <- which(colnames(mat_data_miss)==c)
+      
+      pred_data_high_miss[,k] <- pred_data_high_miss[,k] + setstep(pred_data_high[,c])
+
+      pred_data_low_miss[,k] <- pred_data_low_miss[,k] - setstep(pred_data_low[,c])
+    }
+    
+  }
+  
+  
+  
+  margin_ord <- sapply(1:nrow(X_beta_ord), function(i,this_col) {
+    y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+                          X=pred_data_low,
+                          X_miss = pred_data_low_miss,
+                          X_beta_miss=X_beta_ord_miss[i,],
+                          X_beta=X_beta_ord_infl[i,])
+    
+    y1 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+                          X=pred_data_high,
+                          X_miss = pred_data_high_miss,
+                          X_beta_miss=X_beta_ord_miss[i,],
+                          X_beta=X_beta_ord_infl[i,])
+    
+    marg_eff <- (y1-y0)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    
+    mean(marg_eff)
+  },c)
+  
+  tibble(marg=margin_ord,variable=colnames(mat_data)[c])
+}) %>% bind_rows
+
+```
+
+```{r fitlm}
+
+# check with OLS
+
+if(run_model) {
+  pew_fit_lm <- stan_lm(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data,
+                      chains=2,iter=2000,cores=2,prior=NULL,
+                      seed=random_seed)
+
+  saveRDS(pew_fit_lm,"data/pew_fit_lm.rds")
+} else {
+  pew_fit_lm <- readRDS("data/pew_fit_lm.rds")
+}
+
+yrep_ols <- posterior_predict(pew_fit_lm)
+# these constitute marginal effects for OLS
+out_lm <- as.matrix(pew_fit_lm)[,-1]
+
+```
+
+```{r fitzoib}
+
+# fit the ZOIB
+
+  x <- model.matrix(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data)[,-1]
+  
+  if(run_model) {
+    zoib_fit <- sampling(zoib_model,data=list(n=nrow(x),
+                                            y=model_data$therm,
+                                            k=ncol(x),
+                                            x=x,
+                                            seed=random_seed,
+                                          run_gen=1),
+                       chains=2,
+                       cores=2,iter=2000,
+                       pars=c("coef_m","zoib_regen","zoib_log","coef_a","coef_g","alpha"))
+    
+    saveRDS(zoib_fit,"data/zoib_fit.rds")
+  } else {
+    zoib_fit <- readRDS("data/zoib_fit.rds")
+  }
+  
+  yrep_zoib <- as.matrix(zoib_fit,"zoib_regen")
+  coef_a <- as.matrix(zoib_fit,"coef_a")
+  coef_g <- as.matrix(zoib_fit,"coef_g")
+  alpha <- as.matrix(zoib_fit,"alpha")
+  X_beta_zoib <- as.matrix(zoib_fit,"coef_m")
+  
+  mat_data <- x
+
+all_vars_zoib <- lapply(1:ncol(mat_data),function(c,coef_a,coef_m,coef_g,alpha) {
+  
+  if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- 0
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- 1
+  } else {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
+  }
+  
+  
+  
+  margin_ord <- sapply(1:nrow(X_beta_ord), function(i,this_col) {
+    y0 <- predict_zoib(X=pred_data_low,
+                          coef_m=coef_m[i,],
+                          coef_a=coef_a[i,],
+                          coef_g=coef_g[i,],
+                          alpha1=alpha[i,1],
+                          alpha2=alpha[i,2],
+                          alpha3=alpha[i,3])
+    
+    y1 <- predict_zoib(X=pred_data_high,
+                          coef_m=coef_m[i,],
+                          coef_a=coef_a[i,],
+                          coef_g=coef_g[i,],
+                          alpha1=alpha[i,1],
+                          alpha2=alpha[i,2],
+                          alpha3=alpha[i,3])
+    
+    marg_eff <- (y1-y0)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    
+    mean(marg_eff)
+  },c)
+  
+  tibble(marg=margin_ord,variable=colnames(mat_data)[c])
+},coef_m=X_beta_zoib,coef_a,coef_g,alpha) %>% bind_rows
+  
+```
+
+```{r fitbetatrans}
+  
+# fit beta - transformed
+  
+  
+  if(run_model) {
+    beta_trans_fit <- stan_betareg(therm_rescale~race+sex+income+ideology+approval+age+education+born_again+relig,
+                                 data=model_data,chains=2,cores=2,iter=2000,
+                                 seed=random_seed)
+    
+    saveRDS(beta_trans_fit,"data/beta_trans_fit.rds")
+  } else {
+    # rstanarm not working with reloaded models
+    beta_trans_fit <- stan_betareg(therm_rescale~race+sex+income+ideology+approval+age+education+born_again+relig,
+                                 data=model_data,chains=2,cores=2,
+                                 seed=random_seed,
+                                 iter=2000)
+  }
+  
+  
+  yrep_beta_trans <- posterior_predict(beta_trans_fit)
+  
+  # drop phi
+  X_beta_trans <- as.matrix(beta_trans_fit)
+  
+  X_beta_trans <- X_beta_trans[,-ncol(X_beta_trans)]
+  
+# marginal effects
+  
+mat_data <- model.matrix(beta_trans_fit)
+
+# skip intercept
+
+all_vars_beta_trans <- lapply(2:ncol(mat_data),function(c,X_beta=NULL) {
+  
+  if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- 0
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- 1
+  } else {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
+  }
+  
+  
+  
+  margin <- sapply(1:nrow(X_beta), function(i,this_col) {
+    y0 <- predict_beta(X=pred_data_low,
+                          X_beta=X_beta[i,])
+    
+    y1 <- predict_beta(X=pred_data_high,
+                          X_beta=X_beta[i,])
+    
+    marg_eff <- (y1-y0)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    
+    mean(marg_eff)
+  },c)
+  
+  tibble(marg=margin,variable=colnames(mat_data)[c])
+},X_beta=X_beta_trans) %>% bind_rows
+
+```
+
+```{r fitbetaprop}
+
+
+# fit beta - (0,1)
+
+  model_data_prop <- filter(model_data,therm<1 & therm>0)
+  
+  if(run_model)  {
+    beta_prop_fit <- stan_betareg(therm~race+sex+income+ideology+approval+age+education+born_again+relig,
+                                 data=model_data_prop,
+                                 seed=random_seed,
+                                 chains=2,cores=2,iter=2000)
+    saveRDS(beta_prop_fit,"data/beta_prop_fit.rds")
+  } else {
+    beta_prop_fit <- stan_betareg(therm~race+sex+income+ideology+approval+age+education+born_again+relig,
+                                 data=model_data_prop,
+                                 seed=random_seed,
+                                 chains=2,cores=2,iter=2000)
+  }
+  
+  
+  yrep_beta_prop <- posterior_predict(beta_prop_fit,newdata=model_data_prop)
+  
+  # drop phi
+  X_beta_prop <- as.matrix(beta_prop_fit)
+  
+  X_beta_prop <- X_beta_prop[,-ncol(X_beta_prop)]
+  
+# marginal effects
+  
+mat_data <- model.matrix(beta_prop_fit)
+
+# skip intercept
+
+all_vars_beta_prop <- lapply(2:ncol(mat_data),function(c,X_beta=NULL) {
+  
+  if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- 0
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- 1
+  } else {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
+  }
+  
+  
+  
+  margin <- sapply(1:nrow(X_beta), function(i,this_col) {
+    y0 <- predict_beta(X=pred_data_low,
+                          X_beta=X_beta[i,])
+    
+    y1 <- predict_beta(X=pred_data_high,
+                          X_beta=X_beta[i,])
+    
+    marg_eff <- (y1-y0)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    
+    mean(marg_eff)
+  },c)
+  
+  tibble(marg=margin,variable=colnames(mat_data)[c])
+},X_beta=X_beta_prop) %>% bind_rows
+
+```
+
+```{r modcompare, fig.cap="Comparison of Model Diagnostics for Regression of Thermometer Ratings Towards U.S. College Professors",fig.width=6,fig.height=6}
+
+# need to reduce iterations in zoib model
+
+yrep_zoib <- yrep_zoib
+
+rmse_ord <- apply(yrep_ord,1,function(c) sqrt(mean((c-c(to_bl$outcome_degen,
+                                                       to_bl$outcome_prop))^2)))
+
+rmse_ord_infl <- apply(yrep_ord_infl,1,function(c) sqrt(mean((c-c(to_bl$outcome_degen,
+                                                       to_bl$outcome_prop))^2)))
+
+rmse_ols <- apply(yrep_ols,1,function(c) sqrt(mean((c-pew_fit_lm$model$therm)^2)))
+
+rmse_zoib <- apply(yrep_zoib,1,function(c) sqrt(mean((c-model_data$therm)^2) ))
+
+rmse_beta_trans <- apply(yrep_beta_trans,1,function(c) sqrt(mean((c-model_data$therm)^2) ))
+
+rmse_beta_prop <- apply(yrep_beta_prop,1,function(c) sqrt(mean((c-model_data_prop$therm)^2) ))
+
+kurt_ord <- apply(yrep_ord,1,moments::kurtosis)
+
+kurt_ord_infl <- apply(yrep_ord_infl,1,moments::kurtosis)
+
+kurt_ols <- apply(yrep_ols,1,moments::kurtosis)
+
+kurt_zoib <- apply(yrep_zoib,1,moments::kurtosis)
+
+kurt_beta_trans <- apply(yrep_beta_trans,1,moments::kurtosis)
+
+kurt_beta_prop <- apply(yrep_beta_prop,1,moments::kurtosis)
+
+num_zeros_ols <- apply(yrep_ols,1,function(c) sum(c<=0))
+
+num_ones_ols <- apply(yrep_ols,1,function(c) sum(c>=1))
+
+num_zeros_ord <- apply(yrep_ord,1,function(c) sum(c==0))
+
+num_ones_ord <- apply(yrep_ord,1,function(c) sum(c==1))
+
+num_zeros_zoib <- apply(yrep_zoib,1,function(c) sum(c==0))
+
+num_ones_zoib <- apply(yrep_zoib,1,function(c) sum(c==1))
+
+# let's do coefficient of determination
+
+coef_d_ord <- apply(yrep_ord, 1, function(c) {
+  pi1 <- mean(c[1:to_bl$N_degen][to_bl$outcome_degen==1])
+  pi0 <- mean(c[1:to_bl$N_degen][to_bl$outcome_degen==0])
+  pi1 - pi0
+}) 
+
+coef_d_zoib <- apply(yrep_zoib, 1, function(c) {
+  pi1 <- mean(c[model_data$therm==1])
+  pi0 <- mean(c[model_data$therm==0])
+  pi1 - pi0
+})
+
+coef_d_trans_beta <- apply(yrep_beta_trans, 1, function(c) {
+  pi1 <- mean(c[model_data$therm==1])
+  pi0 <- mean(c[model_data$therm==0])
+  pi1 - pi0
+})
+
+coef_d_lm <- apply(yrep_ols, 1, function(c) {
+  pi1 <- mean(c[model_data$therm==1])
+  pi0 <- mean(c[model_data$therm==0])
+  pi1 - pi0
+})
+
+# do rmse + kurtosis
+
+bind_rows(tibble(Estimate=c(rmse_ord,rmse_zoib,rmse_beta_trans,rmse_beta_prop,rmse_ols)*100,
+       Model=rep(c("Ordered\nBeta","ZOIB","Transformed\nBeta","Continuous\nBeta","OLS"),
+                 each=length(rmse_ord)),
+       Statistic="RMSE"),
+       tibble(Estimate=c(kurt_ord,kurt_zoib,kurt_beta_trans,kurt_beta_prop,kurt_ols),
+       Model=rep(c("Ordered\nBeta","ZOIB","Transformed\nBeta","Continuous\nBeta","OLS"),
+                 each=length(kurt_ord)),
+       Statistic="Kurtosis",
+       true=moments::kurtosis(model_data$therm))) %>% 
+  group_by(Model,Statistic,true) %>% 
+  summarize(med_est=median(Estimate),
+            low=quantile(Estimate,.05),
+            high=quantile(Estimate,.95)) %>% 
+  ggplot(aes(y=med_est,x=reorder(Model,med_est))) +
+  geom_pointrange(aes(ymin=low,
+                     ymax=high)) +
+  theme_minimal() +
+  theme(panel.grid = element_blank()) +
+  geom_hline(aes(yintercept=true),linetype=2) +
+  coord_flip() +
+  facet_wrap(~Statistic,scales="free_x",nrow=2) + 
+  ylab("") +
+  xlab("")
+
+```
+
+```{r posterior_pred}
+
+sample_rows <- sample(1:nrow(yrep_ord),100)
+
+lm_dens <- ppc_dens_overlay(as.numeric(model_data$therm)[model_data$therm>0 & model_data$therm<1],yrep_ols[sample_rows,model_data$therm>0 & model_data$therm<1])
+ord_dens <- ppc_dens_overlay(c(to_bl$outcome_degen,to_bl$outcome_prop),yrep_ord[sample_rows,])
+ord_dens_infl <- ppc_dens_overlay(as.numeric(to_bl_infl$outcome_prop),yrep_ord_infl[sample_rows,(to_bl_infl$N_degen+1):ncol(yrep_ord_infl)])
+zoib_dens <- ppc_dens_overlay(as.numeric(model_data$therm),yrep_zoib[sample_rows,])
+beta_trans_dens <- ppc_dens_overlay(as.numeric(model_data$therm),yrep_beta_trans[sample_rows,])
+# need to make 
+
+```
+
+
+
+```{r combinecoef,fig.cap="Estimated Marginal Effects from Regression of Feeling Thermometer Ratings Towards College Professors",fig.width=6,fig.height=9}
+
+recode_marg <- bind_rows(list(OLS=gather(as_tibble(out_lm),key="variable",value="marg"),
+                         `Ordered\nBeta`=all_vars_ord,
+               `Beta\nTransformed`=all_vars_beta_trans,
+               `Beta\nContinuous`=all_vars_beta_prop,
+               `ZOIB`=all_vars_zoib),.id="model") %>% 
+  filter(!(variable %in% c("R2","sigma","log-fit_ratio"))) %>% 
+  mutate(variable=recode(variable,
+                         `raceBlack non-Hispanic`="Black",
+         `raceHispanic`="Hispanic",
+         `raceOther`="Other Race",
+         `sexFemale`="Female",
+         `income10 to under $20,000`="$10k - $20k",
+         `income20 to under $30,000`="$20k - $30k",
+         `income30 to under $40,000`="$30k - $40k",
+         `income40 to under $50,000`="$40k - $50k",
+         `income50 to under $75,000`="$50k - $75k",
+         `income75 to under $100,000`="$75k - $100k",
+         `income100 to under $150,000 [OR]`="$100k - $150k",
+         `income$150,000 or more`="> $150k",
+         `ideologyConservative`="Conservative",
+         `ideologyModerate`="Moderate",
+         `ideologyLiberal`="Liberal",
+         `ideologyVery liberal`="Very Liberal",
+         `approvalDisapprove`="Disapprove Trump",
+         age="Age",
+         `educationSome college, no degree`="Some College",
+         `educationHigh school graduate`="H.S. Graduate",
+         `educationAssociate’s degree`="Associate's",
+         `educationCollege graduate/some postgrad`="College Grad",
+         `educationPostgraduate`="Postgraduate",
+         `born_againNo, not born-again or evangelical Christian`="Born Again",
+         `religRoman Catholic`="Roman Catholic",
+         `religMormon (Church of Jesus Christ of Latter-day Saints or LDS)`="Mormon",
+         `religOrthodox (such as Greek, Russian, or some other Orthodox church)`="Orthodox",
+         `religSomething else, Specify:`="Other Religion"),
+         variable=factor(variable,levels=c("Conservative",
+                                           "Moderate",
+                                           "Liberal",
+                                           "Very Liberal",
+                                           "Disapprove Trump",
+                                           "Age",
+                                           "Female",
+                                           "Black",
+                                           "Hispanic",
+                                           "Other Race",
+                                           "H.S. Graduate",
+                                           "Some College",
+                                           "Associate's",
+                                           "College Grad",
+                                           "Postgraduate",
+                                           "Born Again",
+                                           "Roman Catholic",
+                                           "Mormon",
+                                           "Orthodox",
+                                           "Other Religion",
+                                           "$10k - $20k",
+                                           "$20k - $30k",
+                                           "$30k - $40k",
+                                           "$40k - $50k",
+                                           "$50k - $75k",
+                                           "$75k - $100k",
+                                           "$100k - $150k",
+                                           "> $150k")),
+         group_list=forcats::fct_collapse(variable,
+                                          `Ideology\nBaseline=Very\nConservative`=c("Conservative",
+                                           "Moderate",
+                                           "Liberal",
+                                           "Very Liberal",
+                                           "Disapprove Trump"),
+                                          Demographics=c("Age",
+                                           "Female",
+                                           "Black",
+                                           "Hispanic",
+                                           "Other Race"),
+                                          `Education\nBaseline=Less Than H.S.`=c("Some College",
+                                           "H.S. Graduate",
+                                           "Associate's",
+                                           "College Grad",
+                                           "Postgraduate"),
+                                          `Religion\nBaseline=Protestant`=c("Born Again",
+                                           "Roman Catholic",
+                                           "Mormon",
+                                           "Orthodox",
+                                           "Other Religion"),
+                                          `Income\nBaseline= <$10k`=c("$10k - $20k",
+                                           "$20k - $30k",
+                                           "$30k - $40k",
+                                           "$40k - $50k",
+                                           "$50k - $75k",
+                                           "$75k - $100k",
+                                           "$100k - $150k",
+                                           "> $150k")))
+  recode_marg %>% 
+    group_by(model,variable,group_list) %>% 
+    mutate(marg=marg*100) %>% 
+  summarize(med_est=median(marg),
+            high=quantile(marg,.95),
+            low=quantile(marg,.05)) %>% 
+  ggplot(aes(y=med_est,x=forcats::fct_rev(variable))) +
+  geom_pointrange(aes(ymin=low,ymax=high,colour=model,shape=model),position=position_dodge(width=.5)) +
+  scale_color_viridis_d() +
+  theme_minimal() +
+  geom_hline(yintercept = 0,linetype=2) +
+  ylab("Thermometer Scores") +
+  theme(legend.position = "top") +
+  guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
+  facet_wrap(~group_list,scales="free",ncol=2) +
+  xlab("") +
+  coord_flip() 
+
+```
+
+```{r sdcoef,include=F,fig.cap="Ratio of 5% - 95% HPD Intervals from Ordered Regression to Other Models"}
+
+  recode_marg %>% 
+  group_by(model) %>% 
+    mutate(marg=marg*100) %>% 
+  # summarize(med_est=median(marg),
+  #           high=quantile(marg,.95),
+  #           low=quantile(marg,.05)) %>% 
+  # group_by(variable) %>% 
+  # mutate(inflation=(high-low)/(high[model=="Ordered\nBeta"]-low[model=="Ordered\nBeta"])) %>% 
+  summarize(sd_est=mean(abs(marg))/((quantile(marg,.95)-quantile(marg,.05)))) %>% 
+  # group_by(model) %>% 
+  # summarize(mean_infl=mean(inflation)) %>% 
+  ggplot(aes(y=sd_est,x=reorder(model,sd_est))) +
+  geom_point(colour="blue",alpha=.5) +
+  scale_color_viridis_d() +
+  theme_minimal() +
+  ylab("Variance Inflation") +
+  theme(legend.position = "top",panel.grid.minor = element_blank()) +
+  #scale_y_continuous(labels=scales::percent) +
+  #geom_hline(yintercept=1,linetype=2) +
+  guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
+  xlab("") +
+  coord_flip() 
+
+```
+
+```{r loo}
+
+# compare all loos
+
+loo_ord <- loo(fit_pew,"ord_log",
+               cores=2)
+
+loo_ord_infl <- loo(fit_pew_infl,"ord_log",
+               cores=2)
+# loo_zoib <- loo(zoib_fit,"zoib_log",cores=2)
+# loo_lm <- loo(pew_fit_lm,cores=2)
+# loo_beta_trans <- loo(beta_trans_fit,cores=2)
+#loo_beta_prop <- loo(beta_prop_fit)
+
+# compare discrete vs. continuous separately
+ord_log <- as.array(fit_pew,"ord_log")
+zoib_log <- as.array(zoib_fit,"zoib_log")
+
+loo_ord_cont <- loo(ord_log[,,((nrow(model_data_degen)+1):nrow(model_data))],
+                    r_eff=relative_eff(exp(ord_log[,
+                                                   ,(nrow(model_data_degen)+1):nrow(model_data)])),
+                    cores=2)
+
+loo_zoib_cont <- loo(zoib_log[,,!(model_data$therm %in% c(0,1))],
+                    r_eff=relative_eff(exp(zoib_log[,,!(model_data$therm %in% c(0,1))])),
+                    cores=2)
+
+loo_lm_disc <- loo(lm_log[,model_data$therm %in% c(0,1)],
+                    cores=2)
+
+loo_ord_cont <- loo(ord_log[,,1:nrow(model_data_degen)],
+                    r_eff=relative_eff(exp(ord_log[,,1:nrow(model_data_degen)])),
+                    cores=2)
+
+loo_zoib_cont <- loo(zoib_log[,,model_data$therm %in% c(0,1)],
+                    r_eff=relative_eff(exp(zoib_log[,,model_data$therm %in% c(0,1)])),
+                    cores=2)
+
+loo_lm_cont <- loo(lm_log[,!(model_data$therm %in% c(0,1))],
+                    cores=2)
+
+loo_compare(loo_ord_disc,loo_zoib_disc,loo_lm_disc)
+
+```
+
+
+```{r extreme}
+
+# look at extreme outcomes
+
+model_data <- mutate(model_data,extreme=as.numeric(therm %in% c(0,1)))
+
+model_data %>% select(Income=income,Education=education,everything()) %>% 
+  gather(key="Variable",value="Value", Income, Education) %>% 
+  select(Variable, Value, everything()) %>% 
+  group_by(Variable,Value) %>% 
+  summarize(`Mean Thermometer`=round(mean(therm)*100,1),
+            `Mean Continuous Thermometer`=round(mean(therm[therm>0 & therm<1])*100,1),
+            `Mean Degenerate Thermometer`=round(mean(extreme)*100,1)) %>% 
+  mutate(Value=factor(Value,levels=c(levels(model_data$education),levels(model_data$income))))  %>% 
+  ungroup %>% 
+  arrange(Value) %>% 
+  mutate(`Mean Degenerate Thermometer`=cell_spec(`Mean Degenerate Thermometer`,
+                                                 bold=ifelse(Value %in% "Less than high school",
+                                                             "Less than $10,000"))) %>% 
+  select(-Variable) %>% 
+  knitr::kable(format="latex",
+               caption="Thermometer Ratings by Income/Education and Response Type (Degenerate or Continuous)",
+               align="lccc",
+               booktabs=T,
+               escape=F) %>% 
+  kable_styling(latex_options=c("striped","hold_position")) %>% 
+  pack_rows("Education",1,6) %>% 
+  pack_rows("Income",7,15)
+  
+
+```
+
+```{r zoibcoef}
+
+# need to check all the zoib coefs
+
+zoib_all <- lapply(1:ncol(mat_data),function(c,coef_a,coef_m,coef_g,alpha) {
+  
+  if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- 0
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- 1
+  } else {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
+  }
+  
+  
+  
+  margin_ord <- lapply(1:nrow(X_beta_ord), function(i,this_col) {
+    y0 <- predict_zoib(X=pred_data_low,
+                          coef_m=coef_m[i,],
+                          coef_a=coef_a[i,],
+                          coef_g=coef_g[i,],
+                          alpha1=alpha[i,1],
+                          alpha2=alpha[i,2],
+                          alpha3=alpha[i,3],
+                       combined_out = F)
+    
+    y1 <- predict_zoib(X=pred_data_high,
+                          coef_m=coef_m[i,],
+                          coef_a=coef_a[i,],
+                          coef_g=coef_g[i,],
+                          alpha1=alpha[i,1],
+                          alpha2=alpha[i,2],
+                          alpha3=alpha[i,3],
+                       combined_out = F)
+    
+    marg_eff_0 <- (y1$pr_zero-y0$pr_zero)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    marg_eff_1 <- (y1$pr_one-y0$pr_one)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    marg_middle <- (y1$pr_proportion-y0$pr_proportion)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    marg_eta <- (plogis(y1$proportion_value)-plogis(y0$proportion_value))/(pred_data_high[,this_col]-pred_data_low[,this_col])
+
+    tibble(marg=c(mean(marg_eff_0),
+             mean(marg_eff_1),
+             mean(marg_middle),
+             mean(marg_eta)),
+             estimate=c("Pr(y=0)",
+                        "Pr(y=1)",
+                        "Pr(y>0 U y<1)",
+                        "Beta(y)"))
+  },c) %>% bind_rows
+  
+
+  margin_ord$variable <- colnames(mat_data)[c]
+  
+  margin_ord
+  
+},coef_m=X_beta_zoib,coef_a,coef_g,alpha) %>% bind_rows
+
+# repeat for regular ordered regression
+
+
+  
+mat_data <- rbind(X_degen,X_prop)
+
+ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
+  
+  if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- 0
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- 1
+  } else {
+    pred_data_high <- mat_data
+    
+    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
+    
+    pred_data_low <- mat_data
+    
+    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
+  }
+  
+  
+  
+  margin_ord <- lapply(1:nrow(X_beta_ord), function(i,this_col) {
+    y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+                          X=pred_data_low,
+                          X_beta=X_beta_ord[i,],
+                          combined_out = F)
+    
+    y1 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+                          X=pred_data_high,
+                          X_beta=X_beta_ord[i,],
+                          combined_out = F)
+    
+    marg_eff_0 <- (y1$pr_zero-y0$pr_zero)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    marg_eff_1 <- (y1$pr_one-y0$pr_one)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    marg_middle <- (y1$pr_proportion-y0$pr_proportion)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+    marg_eta <- (y1$proportion_value-y0$proportion_value)/(pred_data_high[,this_col]-pred_data_low[,this_col])
+
+    tibble(marg=c(mean(marg_eff_0),
+             mean(marg_eff_1),
+             mean(marg_middle),
+             mean(marg_eta)),
+             estimate=c("Pr(y=0)",
+                        "Pr(y=1)",
+                        "Pr(y>0 U y<1)",
+                        "Beta(y)"))
+  },c) %>% bind_rows()
+  
+  margin_ord$variable <- colnames(mat_data)[c]
+  
+  margin_ord
+  
+}) %>% bind_rows
+
+ bind_rows(list(`ZOIB`=zoib_all,
+                `Ordered Beta`=ord_reg_all),.id="model") %>% 
+   mutate(variable=recode(variable,
+                         `raceBlack non-Hispanic`="Black",
+         `raceHispanic`="Hispanic",
+         `raceOther`="Other Race",
+         `sexFemale`="Female",
+         `income10 to under $20,000`="$10k - $20k",
+         `income20 to under $30,000`="$20k - $30k",
+         `income30 to under $40,000`="$30k - $40k",
+         `income40 to under $50,000`="$40k - $50k",
+         `income50 to under $75,000`="$50k - $75k",
+         `income75 to under $100,000`="$75k - $100k",
+         `income100 to under $150,000 [OR]`="$100k - $150k",
+         `income$150,000 or more`="> $150k",
+         `ideologyConservative`="Conservative",
+         `ideologyModerate`="Moderate",
+         `ideologyLiberal`="Liberal",
+         `ideologyVery liberal`="Very Liberal",
+         `approvalDisapprove`="Disapprove Trump",
+         age="Age",
+         `educationSome college, no degree`="Some College",
+         `educationHigh school graduate`="H.S. Graduate",
+         `educationAssociate’s degree`="Associate's",
+         `educationCollege graduate/some postgrad`="College Grad",
+         `educationPostgraduate`="Postgraduate",
+         `born_againNo, not born-again or evangelical Christian`="Born Again",
+         `religRoman Catholic`="Roman Catholic",
+         `religMormon (Church of Jesus Christ of Latter-day Saints or LDS)`="Mormon",
+         `religOrthodox (such as Greek, Russian, or some other Orthodox church)`="Orthodox",
+         `religSomething else, Specify:`="Other Religion"),
+         variable=factor(variable,levels=c("Conservative",
+                                           "Moderate",
+                                           "Liberal",
+                                           "Very Liberal",
+                                           "Disapprove Trump",
+                                           "Age",
+                                           "Female",
+                                           "Black",
+                                           "Hispanic",
+                                           "Other Race",
+                                           "H.S. Graduate",
+                                           "Some College",
+                                           "Associate's",
+                                           "College Grad",
+                                           "Postgraduate",
+                                           "Born Again",
+                                           "Roman Catholic",
+                                           "Mormon",
+                                           "Orthodox",
+                                           "Other Religion",
+                                           "$10k - $20k",
+                                           "$20k - $30k",
+                                           "$30k - $40k",
+                                           "$40k - $50k",
+                                           "$50k - $75k",
+                                           "$75k - $100k",
+                                           "$100k - $150k",
+                                           "> $150k")),
+         group_list=forcats::fct_collapse(variable,
+                                          `Education\nBaseline=Less Than H.S.`=c("Some College",
+                                           "H.S. Graduate",
+                                           "Associate's",
+                                           "College Grad",
+                                           "Postgraduate"),
+                                          `Income\nBaseline= <$10k`=c("$10k - $20k",
+                                           "$20k - $30k",
+                                           "$30k - $40k",
+                                           "$40k - $50k",
+                                           "$50k - $75k",
+                                           "$75k - $100k",
+                                           "$100k - $150k",
+                                           "> $150k"))) %>% 
+   filter(group_list %in% c("Education\nBaseline=Less Than H.S.",
+                            "Income\nBaseline= <$10k")) %>% 
+    group_by(model,variable,estimate,group_list) %>% 
+  summarize(med_est=median(marg),
+            high=quantile(marg,.95),
+            low=quantile(marg,.05)) %>% 
+  ggplot(aes(y=med_est,x=forcats::fct_rev(variable))) +
+  geom_pointrange(aes(ymin=low,ymax=high,colour=model,shape=model),position=position_dodge(width=.5)) +
+  scale_color_viridis_d() +
+  theme_minimal() +
+  geom_hline(yintercept = 0,linetype=2) +
+  ylab("Thermometer Scores") +
+  theme(legend.position = "top") +
+  guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
+  facet_wrap(~estimate+group_list,scales="free",ncol=2) +
+  xlab("") +
+  coord_flip()
+
+```
+
+
+
+# Discussion
+
+# Conclusion
+
+# References
