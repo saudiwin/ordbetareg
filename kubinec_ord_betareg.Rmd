@@ -203,7 +203,7 @@ To compare the models, I simulate data in a manner consistent with the posterior
 
 I compare the simulations based on a range of criteria, including $\hat{elpd}_{PSIS-LOO}$, root mean squared error (RMSE), bias relative to the "true" marginal effect, bias relative to the "true" value of $\beta$, and higher sample moments including variance, skewness and kurtosis. The marginal effects are all calculated via numerical differentiation, which enables me to directly compare the different models. All models are estimated using Stan to ensure comparability in terms of estimation, and each MCMC run has 1000 total iterations with 500 samples discarded as warmup.
 
-```{r compare_base_stats}
+```{r comparebase,fig.cap="Comparison of Simulation Performance Results"}
 
 all_sim <- readRDS("data/sim_cont_X.rds")
 
@@ -248,6 +248,12 @@ all_sim %>%
   xlab("") +
   theme(panel.grid=element_blank()) +
   coord_flip()
+
+```
+
+```{r lookurt}
+
+
 
 ```
 

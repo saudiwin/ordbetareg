@@ -337,6 +337,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   })
   
   this_data$marg_eff <- marg_eff
+  this_data$true_kurt <- moments::kurtosis(final_out)
   
   bind_cols(purrr::map_dfr(seq_len(5), ~this_data),bind_rows(tibble(model="Ordinal Beta Regression",
                    med_est=median(X_beta_ord),
@@ -347,6 +348,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                    win_loo=which(row.names(comp_loo)=="model1"),
                    win_loo_se=comp_loo[which(row.names(comp_loo)=="model1"),2],
                    rmse=rmse_ord,
+                   kurt_est=mean(apply(as.matrix(fit_model,"regen_all"),1,moments::kurtosis)),
                    marg_eff_est=median(margin_ord),
                    high_marg=quantile(margin_ord,.95),
                    low_marg=quantile(margin_ord,.05),
@@ -357,6 +359,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                    low=quantile(X_beta_zoib,.05),
                    sd=sd(X_beta_zoib),
                    loo_val=loo_zoib$estimates[1,1],
+                   kurt_est=mean(apply(as.matrix(zoib_fit,"zoib_regen"),1,moments::kurtosis)),
                    win_loo=which(row.names(comp_loo)=="model2"),
                    win_loo_se=comp_loo[which(row.names(comp_loo)=="model2"),2],
                    rmse=rmse_zoib,
@@ -371,6 +374,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                    sd=sd(X_beta_reg),
                    loo_val=loo_betareg$estimates[1,1],
                    rmse=rmse_betareg,
+                   kurt_est=mean(apply(yrep_betareg,1,moments::kurtosis)),
                    marg_eff_est=median(margin_betareg),
                    high_marg=quantile(margin_betareg,.95),
                    low_marg=quantile(margin_betareg,.05),
@@ -381,6 +385,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                    low=quantile(X_beta_reg2,.05),
                    sd=sd(X_beta_reg2),
                    loo_val=loo_betareg2$estimates[1,1],
+                   kurt_est=mean(apply(yrep_betareg2,1,moments::kurtosis)),
                    rmse=rmse_betareg2,
                     marg_eff_est=median(margin_betareg2),
                     high_marg=quantile(margin_betareg2,.95),
@@ -391,6 +396,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                    high=quantile(X_beta_lm,.95),
                    low=quantile(X_beta_lm,.05),
                    sd=sd(X_beta_lm),
+                   kurt_est=mean(apply(yrep_lm,1,moments::kurtosis)),
                    loo_val=loo_lm$estimates[1,1],
                    win_loo=which(row.names(comp_loo)=="model3"),
                    win_loo_se=comp_loo[which(row.names(comp_loo)=="model3"),2],
