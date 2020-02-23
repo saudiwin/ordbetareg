@@ -57,7 +57,7 @@ model {
     // Pr(Y in (0,1))
     target += log(inv_logit(calc_prop[n] - cutpoints[1]) - inv_logit(calc_prop[n] - cutpoints[2]));
     // Pr(Y==x where x in (0,1))
-    target += beta_proportion_lpdf(outcome_prop[n]|inv_logit(calc_prop[n]),kappa);
+    outcome_prop[n] ~ beta_proportion(inv_logit(calc_prop[n]),kappa);
   }
   
 }

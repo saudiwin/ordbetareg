@@ -1,7 +1,8 @@
 # Robert Kubinec
 # New York University Abu Dhabi
 # January 23, 2020
-# let's try to simulate a new distribution for ordered beta regression
+# Simulation of 0 - 1 bounded dependent variables
+# Note simulation will take some time, approx ~2 days with 3 cores
 
 require(rstan)
 require(bayesplot)
@@ -9,14 +10,16 @@ require(dplyr)
 require(rstanarm)
 require(loo)
 
+set.seed(772235)
+
 rstan_options("auto_write" = TRUE)
 
 beta_logit <- stan_model("beta_logit.stan")
-zoib_model <- stan_model("zoib.stan")
+zoib_model <- stan_model("zoib_nophireg.stan")
 
 # let's do some simulations
 
-N_rep <- 2000
+N_rep <- 10000
 
 simul_data <- tibble(N=round(runif(N_rep,100,2000),0),
                      X_beta=runif(N_rep,-2,2),
@@ -59,13 +62,17 @@ predict_ordbeta <- function(cutpoints=NULL,X=NULL,X_beta=NULL,
   
 }
 
-predict_zoib <- function(psi=NULL,gamma=NULL,coef_m=NULL,
-                          alpha=NULL,
+predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
+                         alpha1=NULL,
+                         alpha2=NULL,
+                         alpha3=NULL,
                          X=NULL,
-                            combined_out=T) {
+                         combined_out=T) {
   
   # we'll assume the same eta was used to generate outcomes
-  eta <- alpha + X*coef_m
+  psi <- plogis(alpha1 + X %*% as.matrix(coef_a))
+  gamma <- plogis(alpha2 + X %*% as.matrix(coef_g))
+  eta <- alpha3 + X %*% as.matrix(coef_m)
   
   # probabilities for three possible categories (0, proportion, 1)
   low <- psi * (1-gamma)
@@ -85,7 +92,9 @@ predict_zoib <- function(psi=NULL,gamma=NULL,coef_m=NULL,
   
 }
 
-all_simul_data <- lapply(1:20, function(i) {
+r_seeds <- c(6635,2216,8845,9936,3321)
+
+all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
   this_data <- slice(simul_data,i)
   cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
   
@@ -134,6 +143,28 @@ all_simul_data <- lapply(1:20, function(i) {
     }
   })
   
+  counter <- environment()
+  counter$i <- 0
+  
+  while(((sum(final_out>0 & final_out<1)<5) || (sum(final_out==1)<5) || (sum(final_out==0)<5)) && (counter$i<20)) {
+    
+    final_out <- sapply(1:length(outcomes),function(i) {
+      if(outcomes[i]==1) {
+        return(0)
+      } else if(outcomes[i]==2) {
+        return(out_beta[i])
+      } else {
+        return(1)
+      }
+    })
+    cat(file = "simul_status.txt","Resampling",append=T)
+    counter$i <- counter$i + 1
+  }
+  
+  if((sum(final_out>0 & final_out<1)<5) || (sum(final_out==1)<5) || (sum(final_out==0)<5)) {
+    return(this_data)
+  }
+  
   # calculate "true" marginal effects
   
   X_low <- X - setstep(X)
@@ -164,31 +195,37 @@ all_simul_data <- lapply(1:20, function(i) {
                 indices_prop=1:(sum(final_out>0 & final_out<1)),
                 run_gen=1)
   
-  fit_model <- sampling(beta_logit,data=to_bl,chains=1,cores=1,iter=1000,pars=c("regen_all","X_beta","ord_log","cutpoints"))
+  fit_model <- sampling(beta_logit,data=to_bl,seed=r_seeds[1],
+                        chains=1,cores=1,iter=1000,pars=c("regen_all","X_beta","ord_log","cutpoints"))
   
   
   x <- as.matrix(X)
   zoib_fit <- sampling(zoib_model,data=list(n=length(final_out),
                                             y=final_out,
                                             k=ncol(x),
+                                            seed=r_seeds[2],
                                             x=x,
-                                            run_gen=1),chains=1,cores=1,iter=1000,pars=c("coef_m","zoib_regen","zoib_log","psi","gamma","alpha"))
+                                            run_gen=1),chains=1,cores=1,iter=1000,pars=c("coef_m","zoib_regen","zoib_log","coef_a","coef_m","coef_g","alpha"))
   
   final_out_scale <- (final_out * (length(final_out) - 1) + .5) / length(final_out)
   
   betareg_fit <- stan_betareg(formula = outcome~X,data=tibble(outcome=final_out_scale,
-                                                              X=X),chains=1,cores=1,iter=1000)
+                                                              X=X),chains=1,cores=1,iter=1000,
+                              seed=r_seeds[3])
   yrep_betareg <- posterior_predict(betareg_fit,draws=100)
   # do a second one with just non0/non1 data
   
   betareg_fit2 <- stan_betareg(formula = outcome~X,data=tibble(outcome=final_out[final_out>0 & final_out<1],
-                                                               X=X[final_out>0 & final_out<1]),chains=1,cores=1,iter=1000)
+                                                               X=X[final_out>0 & final_out<1]),
+                               chains=1,seed=r_seeds[4],
+                               cores=1,iter=1000)
   
   yrep_betareg2 <- posterior_predict(betareg_fit2,draws=100)
   
   # fit OLS
   
   lm_fit <- stan_lm(formula = outcome~X,data=tibble(outcome=final_out,
+                                                    r_seeds[5],
                                                          X=X),chains=1,cores=1,iter=1000,prior=NULL)
   
   yrep_lm <- posterior_predict(lm_fit,draws=100)
@@ -244,31 +281,35 @@ all_simul_data <- lapply(1:20, function(i) {
     
     marg_eff <- (y1-y0)/(X_high-X_low)
     
-    mean(marg_eff)
+    median(marg_eff)
   })
   
   # now for the ZOIB
   
-  psi <- as.matrix(zoib_fit,"psi")
-  gamma <- as.matrix(zoib_fit,"gamma")
-  alpha <- as.matrix(zoib_fit,"alpha[3]")
+  coef_a <- as.matrix(zoib_fit,"coef_a")
+  coef_g <- as.matrix(zoib_fit,"coef_g")
+  alpha <- as.matrix(zoib_fit,"alpha")
   
   margin_zoib <- sapply(1:nrow(X_beta_zoib), function(i) {
-    y0 <- predict_zoib(psi=psi[i,],
-                       gamma=gamma[i,],
-                       alpha=alpha[i],
-                          X=X_low,
-                          coef_m=X_beta_zoib[i,])
+    y0 <- predict_zoib(coef_g=coef_g[i],
+                       coef_a=coef_a[i],
+                       alpha1=alpha[i,1],
+                       alpha2=alpha[i,2],
+                       alpha3=alpha[i,3],
+                       X=X_low,
+                       coef_m=X_beta_zoib[i,])
     
-    y1 <-  predict_zoib(psi=psi[i,],
-                        gamma=gamma[i,],
-                        alpha=alpha[i],
+    y1 <-  predict_zoib(coef_g=coef_g[i],
+                        coef_a=coef_a[i],
+                        alpha1=alpha[i,1],
+                        alpha2=alpha[i,2],
+                        alpha3=alpha[i,3],
                         X=X_high,
                         coef_m=X_beta_zoib[i,])
     
     marg_eff <- (y1-y0)/(X_high-X_low)
     
-    mean(marg_eff)
+    median(marg_eff)
   })
   
   # now betareg
@@ -281,7 +322,7 @@ all_simul_data <- lapply(1:20, function(i) {
     
     marg_eff <- (y1-y0)/(X_high-X_low)
     
-    mean(marg_eff)
+    median(marg_eff)
   })
   
   betareg2_int <- as.matrix(betareg_fit2,pars="(Intercept)")
@@ -292,7 +333,7 @@ all_simul_data <- lapply(1:20, function(i) {
     
     marg_eff <- (y1-y0)/(X_high-X_low)
     
-    mean(marg_eff)
+    median(marg_eff)
   })
   
   this_data$marg_eff <- marg_eff
@@ -361,7 +402,7 @@ all_simul_data <- lapply(1:20, function(i) {
   
   
   
-})
+},simul_data=simul_data,r_seeds=r_seeds,mc.cores=3)
 
 simul_data_final <- bind_rows(all_simul_data)
 

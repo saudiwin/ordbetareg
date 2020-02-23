@@ -3,6 +3,7 @@ title: "Ordered Beta Regression: A Parsimonious, Well-Fitting Model for Zero-One
 bibliography: "/Users/rmk/firmbook/BibTexDatabase.bib"
 output: 
   bookdown::pdf_document2:
+      keep_tex: true
       includes:
         in_header: preamble.tex
 
@@ -19,6 +20,7 @@ require(lubridate)
 require(loo)
 require(kableExtra)
 require(bayesplot)
+require(patchwork)
 
 knitr::opts_chunk$set(echo=F,warning=F,message=F)
 
@@ -32,11 +34,16 @@ ord_beta_mod_infl <- stan_model("beta_logit_infl_simple.stan")
 ord_beta_mod_phi <- stan_model("beta_logit_phireg.stan")
 
 # whether to fit all models
-run_model <- T
+run_model <- F
 
 # to reproduce results, change if you want fresh sampling
 
 random_seed <- 77123101
+
+# if you want to re-run the simulation, use this line of code
+# note that the simulation can take a long time depending on cores (~2 days)
+
+# source("ordered_beta_reg_sim.R")
 
 ```
 
@@ -196,6 +203,55 @@ To compare the models, I simulate data in a manner consistent with the posterior
 
 I compare the simulations based on a range of criteria, including $\hat{elpd}_{PSIS-LOO}$, root mean squared error (RMSE), bias relative to the "true" marginal effect, bias relative to the "true" value of $\beta$, and higher sample moments including variance, skewness and kurtosis. The marginal effects are all calculated via numerical differentiation, which enables me to directly compare the different models. All models are estimated using Stan to ensure comparability in terms of estimation, and each MCMC run has 1000 total iterations with 500 samples discarded as warmup.
 
+```{r compare_base_stats}
+
+all_sim <- readRDS("data/sim_cont_X.rds")
+
+# need to remove an outlier (rmse shouldn't be greater than 1)
+
+all_sim <- filter(all_sim,rmse<1)
+
+# need function to calculate correct conf intervals
+
+my_conf_fun <- function(x) {
+  if(all(x>=0 & x<=1)) {
+    # use binomial confidence intervals
+    bi_ci <- binom::binom.bayes(sum(x,na.rm=T),length(x))
+    return(tibble(y=bi_ci$mean,
+                  ymin=bi_ci$lower,
+                  ymax=bi_ci$upper))
+  } else {
+    boot_ci <- Hmisc::smean.cl.boot(x)
+    return(tibble(y=boot_ci["Mean"],
+                  ymin=boot_ci["Lower"],
+                  ymax=boot_ci["Upper"]))
+  }
+}
+
+all_sim %>% 
+  mutate(s_err=sign(marg_eff)!=sign(marg_eff_est),
+            m_err=marg_eff/marg_eff_est,
+         cov=ifelse(marg_eff>0,marg_eff<high_marg & marg_eff>low_marg,
+                    marg_eff<high_marg & marg_eff>low_marg),
+         loo_val=ifelse(model %in% c("Beta Regression - (0,1)",
+                                     "Beta Regression - Transformed"),
+                        NA,loo_val)) %>% 
+  select(RMSE="rmse",`ELPD LOO`="loo_val",
+         `Average LOO Rank`="win_loo",`Proportion S Errors`="s_err",
+         `M Errors`="m_err",`5% - 95% Coverage`="cov",model) %>% 
+  gather(key = "type",value="estimate",-model) %>% 
+  ggplot(aes(y=estimate,x=model)) +
+  stat_summary(fun.data=my_conf_fun,geom="pointrange") +
+  facet_wrap(~type,scales="free") +
+  theme_minimal() +
+  ylab("") +
+  xlab("") +
+  theme(panel.grid=element_blank()) +
+  coord_flip()
+
+```
+
+
 # Empirical Examples
 
 To analyze the model in an applied setting I use data from the Pew Forum American Trends Panel. This survey tracks a sample of Americans over time on a variety of political and social opinions. In this section I study the August 2017 wave of the panel, which consisted of 4,971 U.S. adults via an online sampling frame. As I am interested in studying the effect of certain variables on an outcome in the survey rather than making population inference via sample propotions, I ignore the sampling design in the analysis that follows.\footnote{As variables that affect sample inclusion, such as education and political affiliation, enter into the model, sample inclusion probabilities are implicitly controlled for when calculating the effects of interest.}
@@ -232,7 +288,7 @@ ggsave("college_prof.png",width=7,height=4,units="in",scale=1.1)
 
 Figure \@ref(fig:loaddata) reveals some of the very common issues with these sorts of scales with human subjects. The distribution is effectively tri-modal, with a large number of respondents with presumably neutral (50) feelings. A sizable minority have very strong feelngs in favor of college professors (perhaps a relief to many of the readers of this article), with a second mode at or near 100. Finally, there is a thankfully smaller yet still noticeable mode at 0. I will consider each of the strategies attempted in the simulation to model this dependent variable effectively given a set of covariates relevant to socio-political opinion, including age, sex, race, party identification, political ideology, income, approval of President Donald Trump and (of course) education.
 
-```{r fitordreg}
+```{r fitordreg,include=F}
 
   # need a completed dataset with all of the covariates
   require(haven)
@@ -248,6 +304,7 @@ Figure \@ref(fig:loaddata) reveals some of the very common issues with these sor
                        relig="F_RELIG_FINAL",
                         news="NEWS_PLATFORMA_W28") %>% 
     mutate_all(zap_missing) %>% 
+    drop_na %>% 
   mutate(therm=(therm - min(therm,na.rm = T))/(max(therm,na.rm=T) - 
                                                        min(therm,na.rm = T)),
          therm_rescale=(therm * (sum(!is.na(therm))-1) + 0.5)/sum(!is.na(therm)),
@@ -325,7 +382,7 @@ Figure \@ref(fig:loaddata) reveals some of the very common issues with these sor
   
   
   if(run_model) {
-    fit_pew_infl <- sampling(ord_beta_mod, 
+    fit_pew_infl <- sampling(ord_beta_mod_infl, 
                         seed=random_seed,
                         data=to_bl_infl,chains=2,cores=2,iter=2000)
   
@@ -340,6 +397,7 @@ Figure \@ref(fig:loaddata) reveals some of the very common issues with these sor
                 N_prop=nrow(model_data_prop),
                 X=ncol(X_prop),
                 X_miss=ncol(X_prop_miss),
+                X_phi=ncol(X_prop_phi),
                 infl_value=0.5,
                 outcome_prop=model_data_prop$therm,
                 outcome_degen=model_data_degen$therm,
@@ -355,27 +413,33 @@ Figure \@ref(fig:loaddata) reveals some of the very common issues with these sor
   
   
   if(run_model) {
-    fit_pew_infl <- sampling(ord_beta_mod, 
+    fit_pew_phireg <- sampling(ord_beta_mod_phi, 
                         seed=random_seed,
-                        data=to_bl_infl,chains=2,cores=2,iter=2000)
+                        data=to_bl_phireg,chains=2,cores=2,iter=2000)
   
-    fit_saveRDS(fit_pew_infl,"data/fit_pew_infl.rds")
+    saveRDS(fit_pew_phireg,"data/fit_pew_phireg.rds")
   } else {
-    fit_pew_infl <- readRDS("data/fit_pew_infl.rds")
+    fit_pew_phireg <- readRDS("data/fit_pew_phireg.rds")
   }
-  
-  
   
   
   cutpoints_est <- as.matrix(fit_pew,"cutpoints")
   X_beta_ord <- as.matrix(fit_pew,"X_beta")
   yrep_ord <- as.matrix(fit_pew,"regen_all")
   
+  cutpoints_est_phi <- as.matrix(fit_pew_phireg,"cutpoints")
+  X_beta_ord_phi <- as.matrix(fit_pew_phireg,"X_beta")
+  yrep_ord_phi <- as.matrix(fit_pew_phireg,"regen_all")
+  
+  cutpoints_est_infl <- as.matrix(fit_pew_infl,"cutpoints")
+  X_beta_ord_infl <- as.matrix(fit_pew_infl,"X_beta")
+  yrep_ord_infl <- as.matrix(fit_pew_infl,"regen_all")
+  
 # iterate over columns to get marginal effects
 
 mat_data <- rbind(X_degen,X_prop)
 
-all_vars_ord <- lapply(1:ncol(mat_data),function(c) {
+all_vars_ord_phi <- lapply(1:ncol(mat_data),function(c) {
   
   if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
     pred_data_high <- mat_data
@@ -398,13 +462,13 @@ all_vars_ord <- lapply(1:ncol(mat_data),function(c) {
   
   
   margin_ord <- sapply(1:nrow(X_beta_ord), function(i,this_col) {
-    y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+    y0 <- predict_ordbeta(cutpoints=cutpoints_est_phi[i,],
                           X=pred_data_low,
-                          X_beta=X_beta_ord[i,])
+                          X_beta=X_beta_ord_phi[i,])
     
-    y1 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+    y1 <- predict_ordbeta(cutpoints=cutpoints_est_phi[i,],
                           X=pred_data_high,
-                          X_beta=X_beta_ord[i,])
+                          X_beta=X_beta_ord_phi[i,])
     
     marg_eff <- (y1-y0)/(pred_data_high[,this_col]-pred_data_low[,this_col])
     
@@ -414,94 +478,62 @@ all_vars_ord <- lapply(1:ncol(mat_data),function(c) {
   tibble(marg=margin_ord,variable=colnames(mat_data)[c])
 }) %>% bind_rows
 
-# now for inflated model
+# now for phi reg
 
-cutpoints_est_infl <- as.matrix(fit_pew_infl,"cutpoints")
-  X_beta_ord_infl <- as.matrix(fit_pew_infl,"X_beta")
+cutpoints_est_phi <- as.matrix(fit_pew_phireg,"cutpoints")
+  X_beta_ord_phi <- as.matrix(fit_pew_phireg,"X_beta")
  # X_beta_ord_miss <- as.matrix(fit_pew_infl,"X_beta_miss")
-  yrep_ord_infl <- as.matrix(fit_pew_infl,"regen_all")
+  yrep_ord_phi <- as.matrix(fit_pew_phireg,"regen_all")
   
 # iterate over columns to get marginal effects
   
 mat_data_miss <- rbind(X_degen_miss,X_prop_miss)
 
-all_vars_ord_infl <- lapply(1:ncol(mat_data),function(c) {
-  
+all_vars_ord <- lapply(1:ncol(mat_data),function(c) {
+
   if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
     pred_data_high <- mat_data
-    
-    pred_data_high[,c] <- 0
-    
-    pred_data_low <- mat_data
-    
-    pred_data_low[,c] <- 1
-    
-    pred_data_high_miss <- mat_data_miss
-    
-    pred_data_low_miss <- mat_data_miss
-    
-    if(colnames(mat_data)[c] %in% colnames(mat_data_miss)) {
-      
-      k <- which(colnames(mat_data_miss)==c)
-      
-      pred_data_high_miss[,k] <- 0
 
-      pred_data_low_miss[,k] <- 1
-    } 
-    
+    pred_data_high[,c] <- 0
+
+    pred_data_low <- mat_data
+
+    pred_data_low[,c] <- 1
   } else {
     pred_data_high <- mat_data
-    
-    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
-    
-    pred_data_low <- mat_data
-    
-    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
-    
-    pred_data_high_miss <- mat_data_miss
-    
-    pred_data_low_miss <- mat_data_miss
-    
-    if(colnames(mat_data)[c] %in% colnames(mat_data_miss)) {
-      
-      k <- which(colnames(mat_data_miss)==c)
-      
-      pred_data_high_miss[,k] <- pred_data_high_miss[,k] + setstep(pred_data_high[,c])
 
-      pred_data_low_miss[,k] <- pred_data_low_miss[,k] - setstep(pred_data_low[,c])
-    }
-    
+    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
+
+    pred_data_low <- mat_data
+
+    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
   }
-  
-  
-  
+
+
+
   margin_ord <- sapply(1:nrow(X_beta_ord), function(i,this_col) {
     y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
                           X=pred_data_low,
-                          X_miss = pred_data_low_miss,
-                          X_beta_miss=X_beta_ord_miss[i,],
-                          X_beta=X_beta_ord_infl[i,])
-    
+                          X_beta=X_beta_ord[i,])
+
     y1 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
                           X=pred_data_high,
-                          X_miss = pred_data_high_miss,
-                          X_beta_miss=X_beta_ord_miss[i,],
-                          X_beta=X_beta_ord_infl[i,])
-    
+                          X_beta=X_beta_ord[i,])
+
     marg_eff <- (y1-y0)/(pred_data_high[,this_col]-pred_data_low[,this_col])
-    
+
     mean(marg_eff)
   },c)
-  
+
   tibble(marg=margin_ord,variable=colnames(mat_data)[c])
 }) %>% bind_rows
-
+# 
 ```
-
-```{r fitlm}
-
-# check with OLS
-
+#
+```{r fitlm,include=F}
+# 
+# # check with OLS
+# 
 if(run_model) {
   pew_fit_lm <- stan_lm(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data,
                       chains=2,iter=2000,cores=2,prior=NULL,
@@ -513,12 +545,11 @@ if(run_model) {
 }
 
 yrep_ols <- posterior_predict(pew_fit_lm)
-# these constitute marginal effects for OLS
-out_lm <- as.matrix(pew_fit_lm)[,-1]
+out_lm <- as.matrix(pew_fit_lm)
 
 ```
 
-```{r fitzoib}
+```{r fitzoib,include=F}
 
 # fit the ZOIB
 
@@ -597,7 +628,7 @@ all_vars_zoib <- lapply(1:ncol(mat_data),function(c,coef_a,coef_m,coef_g,alpha) 
   
 ```
 
-```{r fitbetatrans}
+```{r fitbetatrans,include=F}
   
 # fit beta - transformed
   
@@ -669,7 +700,7 @@ all_vars_beta_trans <- lapply(2:ncol(mat_data),function(c,X_beta=NULL) {
 
 ```
 
-```{r fitbetaprop}
+```{r fitbetaprop,include=F}
 
 
 # fit beta - (0,1)
@@ -742,6 +773,45 @@ all_vars_beta_prop <- lapply(2:ncol(mat_data),function(c,X_beta=NULL) {
 
 ```
 
+```{r loo}
+
+# compare all loos
+
+loo_ord <- loo(fit_pew,"ord_log",
+               cores=2)
+
+loo_ord_infl <- loo(fit_pew_infl,"ord_log",
+               cores=2)
+
+loo_ord_phireg <- loo(fit_pew_phireg,"ord_log",cores=2)
+
+loo_zoib <- loo(zoib_fit,"zoib_log",cores=2)
+loo_lm <- loo(pew_fit_lm,cores=2)
+# loo_beta_trans <- loo(beta_trans_fit,cores=2)
+#loo_beta_prop <- loo(beta_prop_fit)
+
+# # compare discrete vs. continuous separately
+# ord_log <- as.array(fit_pew,"ord_log")
+# zoib_log <- as.array(zoib_fit,"zoib_log")
+# lm_log <- log_lik(pew_fit_lm)
+# 
+# # look at everything without 0.5s
+# 
+# nopoint5 <- model_data$therm != 0.5
+# nopoint5_ord <- c(to_bl$outcome_degen,to_bl$outcome_prop) != 0.5
+# 
+# loo_ord_no5 <- loo(ord_log[,,nopoint5_ord],r_eff=relative_eff(exp(ord_log[,,nopoint5_ord])),
+#                cores=2)
+# loo_zoib_no5 <- loo(zoib_log[,,nopoint5],
+#                 r_eff=relative_eff(exp(zoib_log[,,nopoint5])),
+#                cores=2)
+# loo_lm_no5 <- loo(lm_log[,nopoint5],
+#               r_eff=relative_eff(exp(lm_log[,nopoint5]),chain_id=rep(1:2,each=1000)))
+
+```
+
+
+
 ```{r modcompare, fig.cap="Comparison of Model Diagnostics for Regression of Thermometer Ratings Towards U.S. College Professors",fig.width=6,fig.height=6}
 
 # need to reduce iterations in zoib model
@@ -773,18 +843,6 @@ kurt_zoib <- apply(yrep_zoib,1,moments::kurtosis)
 kurt_beta_trans <- apply(yrep_beta_trans,1,moments::kurtosis)
 
 kurt_beta_prop <- apply(yrep_beta_prop,1,moments::kurtosis)
-
-num_zeros_ols <- apply(yrep_ols,1,function(c) sum(c<=0))
-
-num_ones_ols <- apply(yrep_ols,1,function(c) sum(c>=1))
-
-num_zeros_ord <- apply(yrep_ord,1,function(c) sum(c==0))
-
-num_ones_ord <- apply(yrep_ord,1,function(c) sum(c==1))
-
-num_zeros_zoib <- apply(yrep_zoib,1,function(c) sum(c==0))
-
-num_ones_zoib <- apply(yrep_zoib,1,function(c) sum(c==1))
 
 # let's do coefficient of determination
 
@@ -840,17 +898,23 @@ bind_rows(tibble(Estimate=c(rmse_ord,rmse_zoib,rmse_beta_trans,rmse_beta_prop,rm
 
 ```
 
-```{r posterior_pred}
+```{r postpred,fig.cap="Comparison of Full Posterior Predictive Distributions for Models"}
 
 sample_rows <- sample(1:nrow(yrep_ord),100)
 
-lm_dens <- ppc_dens_overlay(as.numeric(model_data$therm)[model_data$therm>0 & model_data$therm<1],yrep_ols[sample_rows,model_data$therm>0 & model_data$therm<1])
-ord_dens <- ppc_dens_overlay(c(to_bl$outcome_degen,to_bl$outcome_prop),yrep_ord[sample_rows,])
-ord_dens_infl <- ppc_dens_overlay(as.numeric(to_bl_infl$outcome_prop),yrep_ord_infl[sample_rows,(to_bl_infl$N_degen+1):ncol(yrep_ord_infl)])
-zoib_dens <- ppc_dens_overlay(as.numeric(model_data$therm),yrep_zoib[sample_rows,])
-beta_trans_dens <- ppc_dens_overlay(as.numeric(model_data$therm),yrep_beta_trans[sample_rows,])
-# need to make 
+# first all vals
 
+lm_dens <- ppc_ecdf_overlay(as.numeric(model_data$therm),yrep_ols[sample_rows,]) +
+  ggtitle("Ordinary Least Squares")
+ord_dens <- ppc_ecdf_overlay(c(to_bl$outcome_degen,to_bl$outcome_prop),yrep_ord[sample_rows,]) +
+  ggtitle("Ordered Beta")
+zoib_dens <- ppc_ecdf_overlay(as.numeric(model_data$therm),yrep_zoib[sample_rows,]) +
+  ggtitle("ZOIB")
+beta_trans_dens <- ppc_ecdf_overlay(as.numeric(model_data$therm),yrep_beta_trans[sample_rows,]) +
+  ggtitle("Transformed Beta")
+
+lm_dens + ord_dens + zoib_dens + beta_trans_dens +
+  plot_layout(guides = 'collect')
 ```
 
 
@@ -862,7 +926,7 @@ recode_marg <- bind_rows(list(OLS=gather(as_tibble(out_lm),key="variable",value=
                `Beta\nTransformed`=all_vars_beta_trans,
                `Beta\nContinuous`=all_vars_beta_prop,
                `ZOIB`=all_vars_zoib),.id="model") %>% 
-  filter(!(variable %in% c("R2","sigma","log-fit_ratio"))) %>% 
+  filter(!(variable %in% c("R2","sigma","log-fit_ratio","(Intercept)"))) %>% 
   mutate(variable=recode(variable,
                          `raceBlack non-Hispanic`="Black",
          `raceHispanic`="Hispanic",
@@ -969,79 +1033,6 @@ recode_marg <- bind_rows(list(OLS=gather(as_tibble(out_lm),key="variable",value=
 
 ```
 
-```{r sdcoef,include=F,fig.cap="Ratio of 5% - 95% HPD Intervals from Ordered Regression to Other Models"}
-
-  recode_marg %>% 
-  group_by(model) %>% 
-    mutate(marg=marg*100) %>% 
-  # summarize(med_est=median(marg),
-  #           high=quantile(marg,.95),
-  #           low=quantile(marg,.05)) %>% 
-  # group_by(variable) %>% 
-  # mutate(inflation=(high-low)/(high[model=="Ordered\nBeta"]-low[model=="Ordered\nBeta"])) %>% 
-  summarize(sd_est=mean(abs(marg))/((quantile(marg,.95)-quantile(marg,.05)))) %>% 
-  # group_by(model) %>% 
-  # summarize(mean_infl=mean(inflation)) %>% 
-  ggplot(aes(y=sd_est,x=reorder(model,sd_est))) +
-  geom_point(colour="blue",alpha=.5) +
-  scale_color_viridis_d() +
-  theme_minimal() +
-  ylab("Variance Inflation") +
-  theme(legend.position = "top",panel.grid.minor = element_blank()) +
-  #scale_y_continuous(labels=scales::percent) +
-  #geom_hline(yintercept=1,linetype=2) +
-  guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
-  xlab("") +
-  coord_flip() 
-
-```
-
-```{r loo}
-
-# compare all loos
-
-loo_ord <- loo(fit_pew,"ord_log",
-               cores=2)
-
-loo_ord_infl <- loo(fit_pew_infl,"ord_log",
-               cores=2)
-# loo_zoib <- loo(zoib_fit,"zoib_log",cores=2)
-# loo_lm <- loo(pew_fit_lm,cores=2)
-# loo_beta_trans <- loo(beta_trans_fit,cores=2)
-#loo_beta_prop <- loo(beta_prop_fit)
-
-# compare discrete vs. continuous separately
-ord_log <- as.array(fit_pew,"ord_log")
-zoib_log <- as.array(zoib_fit,"zoib_log")
-
-loo_ord_cont <- loo(ord_log[,,((nrow(model_data_degen)+1):nrow(model_data))],
-                    r_eff=relative_eff(exp(ord_log[,
-                                                   ,(nrow(model_data_degen)+1):nrow(model_data)])),
-                    cores=2)
-
-loo_zoib_cont <- loo(zoib_log[,,!(model_data$therm %in% c(0,1))],
-                    r_eff=relative_eff(exp(zoib_log[,,!(model_data$therm %in% c(0,1))])),
-                    cores=2)
-
-loo_lm_disc <- loo(lm_log[,model_data$therm %in% c(0,1)],
-                    cores=2)
-
-loo_ord_cont <- loo(ord_log[,,1:nrow(model_data_degen)],
-                    r_eff=relative_eff(exp(ord_log[,,1:nrow(model_data_degen)])),
-                    cores=2)
-
-loo_zoib_cont <- loo(zoib_log[,,model_data$therm %in% c(0,1)],
-                    r_eff=relative_eff(exp(zoib_log[,,model_data$therm %in% c(0,1)])),
-                    cores=2)
-
-loo_lm_cont <- loo(lm_log[,!(model_data$therm %in% c(0,1))],
-                    cores=2)
-
-loo_compare(loo_ord_disc,loo_zoib_disc,loo_lm_disc)
-
-```
-
-
 ```{r extreme}
 
 # look at extreme outcomes
@@ -1052,48 +1043,52 @@ model_data %>% select(Income=income,Education=education,everything()) %>%
   gather(key="Variable",value="Value", Income, Education) %>% 
   select(Variable, Value, everything()) %>% 
   group_by(Variable,Value) %>% 
-  summarize(`Mean Thermometer`=round(mean(therm)*100,1),
-            `Mean Continuous Thermometer`=round(mean(therm[therm>0 & therm<1])*100,1),
-            `Mean Degenerate Thermometer`=round(mean(extreme)*100,1)) %>% 
+  summarize(`Mean Thermometer`=round(mean(therm),2),
+            `Mean Continuous Thermometer`=round(mean(therm[therm>0 & therm<1]),2),
+            `Mean Degenerate Thermometer`=round(mean(therm[therm %in% c(0,1)]),2),
+            `Proportion Degenerate Responses`=round((sum(therm %in% c(0,1)))/n(),2)) %>% 
   mutate(Value=factor(Value,levels=c(levels(model_data$education),levels(model_data$income))))  %>% 
   ungroup %>% 
   arrange(Value) %>% 
-  mutate(`Mean Degenerate Thermometer`=cell_spec(`Mean Degenerate Thermometer`,
-                                                 bold=ifelse(Value %in% "Less than high school",
-                                                             "Less than $10,000"))) %>% 
+  # mutate(`Mean Degenerate Thermometer`=cell_spec(`Mean Degenerate Thermometer`,
+  #                                                bold=(Value %in% c("Less than high school",
+  #                                                            "Less than $10,000")))) %>% 
   select(-Variable) %>% 
   knitr::kable(format="latex",
-               caption="Thermometer Ratings by Income/Education and Response Type (Degenerate or Continuous)",
-               align="lccc",
-               booktabs=T,
-               escape=F) %>% 
-  kable_styling(latex_options=c("striped","hold_position")) %>% 
+               caption="Thermometer Ratings by Income, Education and Response Type (Degenerate or Continuous)",
+               align=c("l","c","c","c"),
+               booktabs=T,escape = T) %>% 
+  kable_styling(latex_options=c("striped")) %>% 
+  column_spec(2:4,width="2cm") %>% 
   pack_rows("Education",1,6) %>% 
   pack_rows("Income",7,15)
   
 
 ```
 
-```{r zoibcoef}
+```{r zoibcoef,fig.cap="Comparison of Intermediate Probabilities for Ordered Beta Regression and ZOIB",fig.height=9,fig.width=6}
 
 # need to check all the zoib coefs
 
-zoib_all <- lapply(1:ncol(mat_data),function(c,coef_a,coef_m,coef_g,alpha) {
+# drop intercept
+mat_data_small <- mat_data[,-1]
+
+zoib_all <- lapply(1:ncol(mat_data_small),function(c,coef_a,coef_m,coef_g,alpha) {
   
-  if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
-    pred_data_high <- mat_data
+  if(all(mat_data_small[!is.na(mat_data_small[,c]),c] %in% c(0,1))) {
+    pred_data_high <- mat_data_small
     
     pred_data_high[,c] <- 0
     
-    pred_data_low <- mat_data
+    pred_data_low <- mat_data_small
     
     pred_data_low[,c] <- 1
   } else {
-    pred_data_high <- mat_data
+    pred_data_high <- mat_data_small
     
     pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
     
-    pred_data_low <- mat_data
+    pred_data_low <- mat_data_small
     
     pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
   }
@@ -1135,7 +1130,7 @@ zoib_all <- lapply(1:ncol(mat_data),function(c,coef_a,coef_m,coef_g,alpha) {
   },c) %>% bind_rows
   
 
-  margin_ord$variable <- colnames(mat_data)[c]
+  margin_ord$variable <- colnames(mat_data_small)[c]
   
   margin_ord
   

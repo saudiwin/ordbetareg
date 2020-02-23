@@ -24,19 +24,25 @@ data {
 }
 transformed data {
   int infl_this[N_prop];
+  int miss_id[N_prop]; // index for imputed outcome
+  int miss_counter = 1;
   
   for(i in 1:N_prop) {
     if(outcome_prop[i]==infl_value) {
       infl_this[i] = 1;
+      miss_id[i] = miss_counter;
+      miss_counter += 1;
     } else {
       infl_this[i] = 0;
+      miss_id[i] = miss_counter;
     }
   }
 }
 parameters {
   vector[X] X_beta; // common predictor
+  vector<lower=0.01,upper=0.99>[miss_counter] prop_miss;
   //vector[!(infl_value<0) ? X_miss : 0] X_beta_miss; // predictor for inflated values
-  ordered[4] cutpoints; // cutpoints on ordered (latent) variable (also stand in as intercepts)
+  ordered[2] cutpoints; // cutpoints on ordered (latent) variable (also stand in as intercepts)
   real<lower=0> kappa; // scale parameter for beta regression
   real<lower=0,upper=1> theta; // probability of an observation being missing versus non-missing 
 }
@@ -66,8 +72,10 @@ model {
   //X_beta_miss ~ normal(0,5);
   theta ~ normal(0,2); // tight prior around the number of possible missings 
   kappa ~ exponential(1);
-  for(c in 1:3)
-    cutpoints[c+1] - cutpoints[c] ~ normal(0,3);
+  prop_miss ~ normal(0,1); // put the majority of prior miss around 0.5
+  cutpoints[2] - cutpoints[1] ~ normal(0,3);
+  // for(c in 1:3)
+  //   cutpoints[c+1] - cutpoints[c] ~ normal(0,3);
   
   // need separate counters for logit (0/1) and beta regression
   
@@ -87,47 +95,17 @@ model {
     for(n in 1:N_prop) {
       // - beta_proportion_lcdf(0.49|inv_logit(calc_prop[n]),kappa)
       //- beta_proportion_lccdf(0.51|inv_logit(calc_prop[n]),kappa)
-    if(outcome_prop[n]<0.5) {
-      target += log(inv_logit(calc_prop[n] - cutpoints[1]) - inv_logit(calc_prop[n] - cutpoints[2])) + log1m(theta);
-      outcome_prop[n] ~ beta_proportion(inv_logit(calc_prop[n]),kappa) T[,.49];
-    }  else if(outcome_prop[n]==0.5) {
-      target += log_sum_exp(log(theta),
-                            log1m(theta) + log(inv_logit(calc_prop[n] - cutpoints[2]) - inv_logit(calc_prop[n] - cutpoints[3])));
-    } else if(outcome_prop[n]>0.5) {
-      target += log(inv_logit(calc_prop[n] - cutpoints[3]) - inv_logit(calc_prop[n] - cutpoints[4]))  + log1m(theta);
-      outcome_prop[n] ~ beta_proportion(inv_logit(calc_prop[n]),kappa) T[.51,];
-    }
-    // Pr(Y in (0,1))
-    
-    // Pr(Y==x where x in (0,1))
+    if(infl_this[n]==infl_value) {
+      target += log(inv_logit(calc_prop[n] - cutpoints[1]) - inv_logit(calc_prop[n] - cutpoints[2])) +
+                log_mix(theta,
+                  beta_proportion_lpdf(prop_miss[miss_id[n]]|inv_logit(calc_prop[n]),kappa),
+                    beta_proportion_lpdf(outcome_prop[n]|inv_logit(calc_prop[n]),kappa));
+    }  else {
+      target += log(inv_logit(calc_prop[n] - cutpoints[1]) - inv_logit(calc_prop[n] - cutpoints[2]));
+      outcome_prop[n] ~ beta_proportion(inv_logit(calc_prop[n]),kappa);
+    } 
     
     }
-  // } else {
-  //   for(n in 1:N_prop) {
-  //     
-  //     // Pr(Y in (0,1))
-  //     
-  //     if()
-  //     
-  //     real pry01 = log(inv_logit(calc_prop[n] - cutpoints[1]) - inv_logit(calc_prop[n] - cutpoints[2]));
-  //       
-  //     
-  //     // inflate the outcome
-  //     if(infl_this[n]==1) {
-  //       //target += bernoulli_logit_lpmf(1|calc_miss[n]);
-  //       target += log_sum_exp(bernoulli_logit_lpmf(1|calc_miss[n]),
-  //                           bernoulli_logit_lpmf(0|calc_miss[n]) +
-  //                           beta_proportion_lpdf(outcome_prop[n]|inv_logit(calc_prop[n]),kappa));
-  //     } else {
-  //       
-  //       target += bernoulli_logit_lpmf(0|calc_miss[n]); // "true" observed value
-  //       target += pry01;
-  //       // Pr(Y==x where x in (0,1))
-  //       target += beta_proportion_lpdf(outcome_prop[n]|inv_logit(calc_prop[n]),kappa);
-  //     }
-  //   
-  //   }
-  // }
   
   
 }
@@ -137,7 +115,7 @@ generated quantities {
   vector[run_gen==0 ? 0 : N_pred_degen+N_pred_prop] regen_degen; // which model is selected (degenerate or proportional)
   vector[run_gen==0 ? 0 : N_pred_degen+N_pred_prop] regen_all; // final (combined) outcome -- defined as random subset of rows
   vector[run_gen==0 ? 0 : N_pred_degen+N_pred_prop] ord_log; // store log calculation for loo
-  int infl_gen[(run_gen==0 || infl_value<0) ? 0 : N_pred_degen+N_pred_prop]; // whether observation belongs to inflated value or not
+  int infl_gen[(run_gen==0 || infl_value<0) ? 0 : N_pred_prop]; // whether observation belongs to inflated value or not
   
   
   if(run_gen==1) {
@@ -150,32 +128,23 @@ generated quantities {
       
       // draw an outcome 0 / prop / 1
       regen_degen[i] = ordered_logistic_rng(calc_degen[i],cutpoints);
-      infl_gen[i] = bernoulli_rng(theta);
       
-      if(outcome_degen[i]==0) {
-        ord_log[i] = log1m_inv_logit(calc_degen[i] - cutpoints[1]) + log1m(theta);
+      if(outcome_degen[i]==1) {
+        ord_log[i] = log1m_inv_logit(calc_degen[i] - cutpoints[1]);
       } else {
-        ord_log[i] = log_inv_logit(calc_degen[i] - cutpoints[4]) + log1m(theta);
+        ord_log[i] = log_inv_logit(calc_degen[i] - cutpoints[2]);
       }
       
-      if(infl_gen[i]==1) {
-        regen_all[i] = 0.5;
-      } else {
        if(regen_degen[i]==1) {
         regen_all[i] = 0;
-      } else if(regen_degen[i]==5) {
+      } else if(regen_degen[i]==3) {
         regen_all[i] = 1;
       } else {
-        
-      if(regen_degen[i]==2||regen_degen[i]==4) {
           regen_all[i] = beta_proportion_rng(inv_logit(calc_prop[i]),kappa);
-        } else {
-          regen_all[i] = infl_value;
-        }
       } 
-      }
       
-  }
+      }
+    }
   
   if(N_pred_prop>0) {
         // now do originally proportional outcomes
@@ -191,49 +160,40 @@ generated quantities {
         
         //ord_log[i+skip] = log(inv_logit(calc_prop[i] - cutpoints[1]) - inv_logit(calc_prop[i] - cutpoints[2]));
         
-          if(outcome_prop[i]<0.5) {
+        if(infl_this[i]==0) {
             ord_log[i+skip] = log(inv_logit(calc_prop[i] - cutpoints[1]) - inv_logit(calc_prop[i] - cutpoints[2]));
-            ord_log[i+skip] = beta_proportion_lpdf(outcome_prop[i]|inv_logit(calc_prop[i]),kappa)  + log1m(theta);
-          }  else if(outcome_prop[i]==0.5) {
-            ord_log[i+skip] = log_sum_exp(log(theta),
-                            log1m(theta) + log(inv_logit(calc_prop[i] - cutpoints[2]) - inv_logit(calc_prop[i] - cutpoints[3])));
-          } else if(outcome_prop[i]>0.5) {
-            ord_log[i+skip] = log(inv_logit(calc_prop[i] - cutpoints[3]) - inv_logit(calc_prop[i] - cutpoints[4]));
-            ord_log[i+skip] = beta_proportion_lpdf(outcome_prop[i]|inv_logit(calc_prop[i]),kappa)  + log1m(theta);
-          }
-        
-        if(infl_gen[i+skip] == 1) {
-          regen_all[i+skip] = infl_value;
+            ord_log[i+skip] += beta_proportion_lpdf(outcome_prop[i]|inv_logit(calc_prop[i]),kappa);
         } else {
-                  if(regen_degen[i+skip]==1) {
+          ord_log[i+skip] = log(inv_logit(calc_prop[i] - cutpoints[1]) - inv_logit(calc_prop[i] - cutpoints[2]));
+          ord_log[i+skip] += log_mix(theta,
+                      beta_proportion_lpdf(prop_miss[miss_id[i]]|inv_logit(calc_prop[i]),kappa),
+                      beta_proportion_lpdf(outcome_prop[i]|inv_logit(calc_prop[i]),kappa));
+        }
+        
+        if(regen_degen[i+skip]==1) {
           regen_all[i+skip] = 0;
-        } else if(regen_degen[i+skip]==5) {
+        } else if(regen_degen[i+skip]==3) {
           regen_all[i+skip] = 1;
         } else {
           // did not occur in original data but could re-occur probabilistically
           // check for inflation first
-          
-            if(regen_degen[i+skip]==1) {
-              regen_all[i+skip] = 0;
-            } else if(regen_degen[i+skip]==5) {
-              regen_all[i+skip] = 1;
+          if(infl_this[i]==infl_value) {
+            if(infl_gen[i]==1) {
+              regen_all[i+skip] = prop_miss[miss_id[i]];
             } else {
-              
-            if(regen_degen[i+skip]==2||regen_degen[i+skip]==4) {
-                regen_all[i+skip] = beta_proportion_rng(inv_logit(calc_prop[i]),kappa);
-              } else {
-                regen_all[i+skip] = infl_value;
-              }
+              regen_all[i+skip] = beta_proportion_rng(inv_logit(calc_prop[i]),kappa);
             }
+          } else {
+            regen_all[i+skip] = beta_proportion_rng(inv_logit(calc_prop[i]),kappa);
+          }
+          
           
         }
         }
 
         
-      } 
-      }
-    }
+    } 
+  
   }
   
 }
-
