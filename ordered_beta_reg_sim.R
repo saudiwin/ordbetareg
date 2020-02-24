@@ -398,8 +398,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                    sd=sd(X_beta_lm),
                    kurt_est=mean(apply(yrep_lm,1,moments::kurtosis)),
                    loo_val=loo_lm$estimates[1,1],
-                   win_loo=which(row.names(comp_loo)=="model3"),
-                   win_loo_se=comp_loo[which(row.names(comp_loo)=="model3"),2],
+                   win_loo=which(row.names(comp_loo)=="lm_fit"),
+                   win_loo_se=comp_loo[which(row.names(comp_loo)=="lm_fit"),2],
                    rmse=rmse_lm,
                    marg_eff_est=median(X_beta_lm),
                    high_marg=quantile(X_beta_lm,.95),
@@ -408,7 +408,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   
   
-},simul_data=simul_data,r_seeds=r_seeds,mc.cores=3)
+},simul_data=simul_data,r_seeds=r_seeds,mc.cores=8)
 
 simul_data_final <- bind_rows(all_simul_data)
 
