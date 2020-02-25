@@ -4,6 +4,7 @@ bibliography: "/Users/rmk/firmbook/BibTexDatabase.bib"
 output: 
   bookdown::pdf_document2:
       keep_tex: true
+      toc: false
       includes:
         in_header: preamble.tex
 
@@ -199,11 +200,41 @@ Finally, I also estimate sample average marginal effects for each parameter $c$ 
 
 # Simulations
 
-To compare the models, I simulate data in a manner consistent with the posterior predictive distribution defined in the previous section. Because the results of simulations can be sensitive to the particular values of parameters, I draw from a broad range of possible values to simulate the ordered beta regression model. 
+To compare the models, I simulate data in a manner consistent with the distribution defined in the previous section. Because the results of simulations can be sensitive to the particular values of parameters, I draw from a broad range of possible values to simulate the ordered beta regression model. For a given covariate effect $\beta_x$, scalar dispersion parameter $\phi$, and cutpoints $c \in \{1,2\}$, these ranges are defined as:
 
-I compare the simulations based on a range of criteria, including $\hat{elpd}_{PSIS-LOO}$, root mean squared error (RMSE), bias relative to the "true" marginal effect, bias relative to the "true" value of $\beta$, and higher sample moments including variance, skewness and kurtosis. The marginal effects are all calculated via numerical differentiation, which enables me to directly compare the different models. All models are estimated using Stan to ensure comparability in terms of estimation, and each MCMC run has 1000 total iterations with 500 samples discarded as warmup.
+\begin{equation}
+\beta_x \sim U(-2,2)\\
+\phi \sim U(0.5,4)\\
+c_1 \sim U(-5,-1)\\
+c_2 \sim c_1 + U(0.5,5)
+(\#eq:simval)
+\end{equation}
 
-```{r comparebase,fig.cap="Comparison of Simulation Performance Results"}
+The total number of observations $N$ is also suampled from a uniform distribution between 100 and 2000. For this simulation, 10,000 independent variates were drawn from the distributions above. Because the broad bounds on the parameters permit relatively sparse distributions, such as no zeros or ones (or no continuous values), any set of parameter values that could not produce at least five observations from the zeroes, ones and continuous parts of the distribution was discarded. This procedure ensures that a range of models can all be compared to each other without encountering estimation problems. 
+
+In addition to the ordered beta regression model specified above, four other models were fit to the data. Two kinds of beta regression models were fit, one using the transformation specified in @verk2006 and the second only using the continuous values of the distribution (discarding degenerate outcomes). The two other models include the ZOIB model specified above and a Bayesian version of OLS. 
+
+All of the estimated values came from Hamiltonian Markov Chain Monte Carlo chains using Stan [@CarpenterGelmanHoffmanEtAl2017]. All models are run with two chains of 1,000 iterations each with 500 samples discarded as warmup in each chain. The use of the same sampler ensures that the results are comparable across models. The beta regression models and the OLS regression were fit with `rstanarm` [@rstanarm].
+
+For each draw of the simulation I calculate the marginal effect of $\beta_x$ on the outcome to allow for easier comparability across models, in particular for OLS, which does not produce any covariates on a scale other than the data. Marginal effects have the additional advantage of being very easy to interpret as they represent the partial second derivative of the parameter $\beta_x$ on the expected value of the outcome, which in this case is a number bounded between 0 and 1.
+
+I compare the simulations based on a range of criteria, which are reported in Figure \@ref(fig:comparebase). The top left corner of the figure shows the coverage rate of 5%-95% high posterior density interval for the estimated marginal effects, i.e., whether these quantiles of the posterior happened to include the true marginal effect. Theoretically, this value should be equal to 90% in expectation, which is represented by the vertical dotted line in the figure. As can be seen, the ordered beta regression is almost exactly equal to the theoretically correct value. The ZOIB model and OLS have marginally lower coverage rates, while the two types of beta regressions have quite low coverage rates, below 50% of the simulation draws.
+
+The upper right panel of \@ref(fig:comparebase) explores M-errors [@gelman2014types], which are defined as the ratio of the estimated marginal effect to the true marginal effect. This statistic can capture bias across the distributions, as a completely un-biased estimator would equal exactly 1. As can be seen, in finite samples this is not so, although the ordered beta regression model approaches 1 (the dotted line). While the ZOIB model and OLS both perform well on this statistic, the beta regression model on continuous values is wildly inflated, meaning that it is likely to over-estimate the effect on average. The beta regression on transformed values, however, is very likely to under-estimate the marginal effect.
+
+Immediately below the M-error panel is the S-error panel, which is defined as the proportion of estimated marginal effects that have a different sign than the true marginal effect [@gelman2014types]. While ordered beta regression performs the best, all of the models are relatively close, except for beta regression on continuous values, which has nearly double the incorrect sign rate.
+
+The bottom right panel shows root mean square error (RMSE), defined as the square root of the squared residuals in the model. In this metric, ordered beta regression marginally out-performs competitors, but OLS and ZOIB are both very close. The beta regression on continuous values is artifically lower on this metric because extreme values were excluded, and the transformed beta regression shows poorer performance because RMSE was evaluated on the original (untransformed) outcome.
+
+The middle and lower-left panels in the figure show results for $\hat{elpd}_{PSIS-LOO}$ (the statistic cannot be calculated for the beta regressions because the outcome must be the same across models). In a departure from the other metrics, ordered beta regression does not receive the highest absolute $\hat{elpd}_{PSIS-LOO}$ scores (middle panel) nor does it rank the highest on average (bottom left panel). This discrepancy suggests that in terms of predictive validity, or the likelihood of the model being true given the observed data, OLS in fact provides a better fit to the data. However, the average ranks suggest that OLS does not always fit better, as its average rank is only slightly better than ordered beta regression. This finding suggests that OLS' performance is dependent on certain characteristics of the distribution which are worth considering further.
+
+As the RMSE metric shows in Figure \@ref(fig:comparebase), OLS does an excellent job capturing the average value of the outcome. However, because OLS is symmetric, unimodal, and defined over all real numbers, it does not perform so well at capturing other sample moments. Given the peculiar nature of the distribution defined above, which can be effectively tri-modal, it is worth considering kurtosis as an important sample characteristic. Kurtosis measures the heaviness of the tails of a distribution, such that more extreme values increase kurtosis. The Normal (Gaussian) distribution is defined as having a fixed kurtosis value of 3, which means that it cannot by definition capture any higher or lower kurtosis values. 
+
+To show kurtosis may be affecting the quality of OLS estimates, I plot kurtosis against $\hat{elpd}_{PSIS-LOO}$ scores in figure .
+
+
+
+```{r comparebase,fig.cap="Comparison of Simulation Performance Results",fig.width=6,fig.height=9}
 
 all_sim <- readRDS("data/sim_cont_X.rds")
 
@@ -230,7 +261,7 @@ my_conf_fun <- function(x) {
 
 all_sim %>% 
   mutate(s_err=sign(marg_eff)!=sign(marg_eff_est),
-            m_err=marg_eff/marg_eff_est,
+            m_err=abs(marg_eff_est)/abs(marg_eff),
          cov=ifelse(marg_eff>0,marg_eff<high_marg & marg_eff>low_marg,
                     marg_eff<high_marg & marg_eff>low_marg),
          loo_val=ifelse(model %in% c("Beta Regression - (0,1)",
@@ -240,20 +271,27 @@ all_sim %>%
          `Average LOO Rank`="win_loo",`Proportion S Errors`="s_err",
          `M Errors`="m_err",`5% - 95% Coverage`="cov",model) %>% 
   gather(key = "type",value="estimate",-model) %>% 
+  mutate(hline=case_when(type=="M Errors"~1,
+                         type=="5% - 95% Coverage"~.90,
+                         TRUE~NA_real_)) %>% 
   ggplot(aes(y=estimate,x=model)) +
   stat_summary(fun.data=my_conf_fun,geom="pointrange") +
-  facet_wrap(~type,scales="free") +
+  facet_wrap(~type,scales="free_x",dir="v") +
   theme_minimal() +
+  geom_hline(aes(yintercept=hline),linetype=2) +
   ylab("") +
   xlab("") +
-  theme(panel.grid=element_blank()) +
+  theme(panel.grid=element_blank(),
+        panel.background = element_rect(fill = NA, color = "gray")) +
   coord_flip()
 
 ```
 
 ```{r lookurt}
 
-
+# all_sim %>% 
+#   select(model,loo_val)
+#   gather(key = "type",value="estimate",-model) %>% 
 
 ```
 
@@ -292,7 +330,7 @@ ggsave("college_prof.png",width=7,height=4,units="in",scale=1.1)
 
 ```
 
-Figure \@ref(fig:loaddata) reveals some of the very common issues with these sorts of scales with human subjects. The distribution is effectively tri-modal, with a large number of respondents with presumably neutral (50) feelings. A sizable minority have very strong feelngs in favor of college professors (perhaps a relief to many of the readers of this article), with a second mode at or near 100. Finally, there is a thankfully smaller yet still noticeable mode at 0. I will consider each of the strategies attempted in the simulation to model this dependent variable effectively given a set of covariates relevant to socio-political opinion, including age, sex, race, party identification, political ideology, income, approval of President Donald Trump and (of course) education.
+Figure \@ref(fig:loaddata) reveals some of the very common issues with these sorts of scales with human subjects. The distribution is effectively tri-modal, with a large number of respondents with presumably neutral (score of 50) feelings. A sizable minority have very strong feelngs in favor of college professors (perhaps a relief to many of the readers of this article), with a second mode at or near 100. Finally, there is a thankfully smaller yet still noticeable mode at 0. I will consider each of the strategies attempted in the simulation to model this dependent variable effectively given a set of covariates relevant to socio-political opinion, including age, sex, race, party identification, political ideology, income, approval of President Donald Trump and (of course) education. With the additional covarates, the total number of non-missing observations comes to 1,475. As such, the dataset is of a size typical in social-scientific analyses, particularly of survey data.
 
 ```{r fitordreg,include=F}
 
@@ -817,6 +855,9 @@ loo_lm <- loo(pew_fit_lm,cores=2)
 ```
 
 
+I fit each of the models in the simulation to the empirical data. Unfortunately, as I do not know the "true" marginal effects, I cannot calculate M-error or S-error rates, nor can I directly compare the variance of the estimates to each other. However, I do calculate RMSE and kurtosis for each model, which is shown in Figure \@ref(fig:modcompare). Similar to the simulation, OLS tends to over-estimate kurtosis while the beta regression on transformed values over-estimates. Interestingly, the beta regression with only continuous values comes closest to the sample kurtosis, though both the ZOIB model and ordered beta regression are quite close. Similar to the simulation, OLS does quite well at minimizing squared errors, out-performing both the ZOIB and ordered beta regression, albeit only slightly.
+
+
 
 ```{r modcompare, fig.cap="Comparison of Model Diagnostics for Regression of Thermometer Ratings Towards U.S. College Professors",fig.width=6,fig.height=6}
 
@@ -904,6 +945,15 @@ bind_rows(tibble(Estimate=c(rmse_ord,rmse_zoib,rmse_beta_trans,rmse_beta_prop,rm
 
 ```
 
+While not included in the coefficient plot, OLS did have superior performance over other models in terms of $\hat{elpd}_{psis_loo}$. As documented in the simulation section, this is likely because of the pronounced mode at 0.5, which helps OLS to fit the range of data values. However, this form of predictive validity obscures much of importance for actual analysis. Figure \@ref(fig:postpred) shows the posterior predictive distributions (draws of the $y_i$ from the posterior values of the parametes, denoted $y_{rep}$) for each of the models. In this figure, the empirical cumulative density of the true outcome is denoted by a thick blue line, while the individual draws from the posterior predictive distribution are in thin gray lines, indicating the approximate range of uncertainty over $y_i$. As can be seen, OLS does well by closely fitting the mode at 0.5, but tends to under-predict at the extremes, especially for zeroes in the distribution. 
+
+By comparison, ordered beta and ZOIB fit more of the distribution (the thick blue line is inside the gray shaded region), with the exception of the mode at 0.5. The transformed beta regression shows the worst fit overall, with a large number of values outside of the posterior predictions. As such, the question becomes whether the behavior of the ZOIB and the ordered beta regression is preferable to that of OLS. In this case, the answer is almost certainly yes. 
+
+For OLS, which is defined over all real numbers, the value of 0.5 is not intrinsically different than other numbers. However, given that this is slider scale/feeling thermometer data, a value of 0.5 is quite different from a value of 0 or a value of 1. Substantively, the midpoint of the scale implies uncertainty: the respondent does not have pronounced views on the subject. For beta-related distributions, this uncertainty is reflected in the shape of the posterior such that it is unlikely that a pronounced mode at 0.5 will re-produce itself. Instead, the beta distribution provides a tighter fit to values that contain more information about respondent views on the $(0,0.49)$ and $(0.51,1)$ intervals. 
+
+It is possible to capture the pronounced mode at 0.5 using ordered beta regression by adding additional ordered cutpoints. I do not do so here as more precisely modeling this mode is unlikely to affect the substantive results in the model. In the appendix I consider a model with additional cutpoints that can reproduce the mode but does not seem to have any other notable differences other than slightly lower predictive validity. In all, the visual analysis provides yet another reason to reject OLS as a suitable model for this type of data as it will down-weight values at the extremes, which contain a lot of information about respondent preferences, in favor of values in the middle which contain relatively little information about respondent preferences. As can be seen, absent this one mode, both ordered beta regression and ZOIB provide reasonable coverage of the full empirical cumulative density of the posterior relative to the observed data.
+
+
 ```{r postpred,fig.cap="Comparison of Full Posterior Predictive Distributions for Models"}
 
 sample_rows <- sample(1:nrow(yrep_ord),100)
@@ -923,7 +973,7 @@ lm_dens + ord_dens + zoib_dens + beta_trans_dens +
   plot_layout(guides = 'collect')
 ```
 
-
+Because I do not have access to the true underlying data generative process, I compare estimated marginal effects from each model. These are reported for the different predictors in the model in Figure \@ref(fig:combinecoef). These results are intriguing both for their similarities and differences. For some covariates, such as age, sex and political ideology, the models return almost identical results (even for the beta regression on continuous values). However, for other variables, the models diverge quite significantly. The most pronounced differences are for education and income where the effects for ordered beta regression and the ZOIB are noticeably far apart, and sometimes even of different signs.
 
 ```{r combinecoef,fig.cap="Estimated Marginal Effects from Regression of Feeling Thermometer Ratings Towards College Professors",fig.width=6,fig.height=9}
 
@@ -1039,6 +1089,15 @@ recode_marg <- bind_rows(list(OLS=gather(as_tibble(out_lm),key="variable",value=
 
 ```
 
+This difference is remarkable given the previous findings showing that ordered beta regression and the ZOIB are similar in many respects, although ordered beta regression tends to be a more efficient estimator. In Figure \@ref(fig:combinecoef) we can see evidence of the issue raised earlier in the article about the ZOIB modeling 0s, 1s and continous values as **separate** processes. Even though the ZOIB provides a generally similar fit to the data as ordered beta regression, the interpretation assigned to covariate effects is not generally the same. In this case, the difference appears to arise from how the two models interpret respondent decision-making by re-weighting the importance of degenerate versus continuous responses.
+
+Table \@ref(tab:extreme) shows the separate calculations of average thermometer rankings for continuous and degenerate responses by education and income, along with the proportion of values in each category that contain degenerate responses. Comparing first for average thermometer values, there does appear to be evidence that the unadjusted scores are higher for less educated and poorer respondents. Comparing continuous and degenerate responses in the middle two columns, the difference between categories is much more pronounced for degenerate responses than for continous responses. In particular for income, poorer respondents are much more likely to give higher scores among degenerate values (an average of 0.81) to professors while wealthier respondents give a dispiriting 0.31. For the continuous values, on the other hand, there are small to weak differences between poorer and richer respondents.
+
+These comparisons can help us understand the divergent marginal effects reported in Figure \@ref(fig:combinecoef). Beta regression with only continuous values shows no differentiation among education categories, while for income categories it shows an **opposite** relationship, with richer respondents holding stronger views for college professors. OLS, which also downplays values at the extremes, is close to the continuous beta distribution in its interpretation of these effects. The transformed beta regression is close to the continuous distributions for education, and quite confusingly, close to the ordered beta regression for income (as has probably become clear by this point, this transformation has potentially severe consequences on correctly modeling the response).
+
+While it is intuitive to understand why OLS and the continuous beta regression would diverge from ordered beta regression, I still have not explained with the ZOIB does so as well. The answer can be seen in the right-most column in Table \@ref(tab:extreme). Not only do poorer and less educated respondents give higher scores among the degenerate responses for college professors, but they are also more likely to give degenerate responses as a proportion of their total responses. As a result, the ZOIB model **downweights** the degenerate responses for the poorer/less educated respondents while it **upweights** continuous responses for the richer/more educated respondents.
+
+
 ```{r extreme}
 
 # look at extreme outcomes
@@ -1062,7 +1121,7 @@ model_data %>% select(Income=income,Education=education,everything()) %>%
   select(-Variable) %>% 
   knitr::kable(format="latex",
                caption="Thermometer Ratings by Income, Education and Response Type (Degenerate or Continuous)",
-               align=c("l","c","c","c"),
+               align=c("l","c","c","c","c"),
                booktabs=T,escape = T) %>% 
   kable_styling(latex_options=c("striped")) %>% 
   column_spec(2:4,width="2cm") %>% 
@@ -1071,6 +1130,19 @@ model_data %>% select(Income=income,Education=education,everything()) %>%
   
 
 ```
+
+
+This confusing behavior can be visualized by examining the model coefficients for each of the outcome's components, $Pr(y_i=0)$, $Pr(y_i=1)$ and $Pr(y_i>0 \cap Pr(y_i<1))$. The effects of income and education on each of these components for the ZOIB and ordered beta regression are shown in Figure \@ref(fig:zoibcoef). First, the top row shows the coefficient values for the predictors of the unweighted Beta regression component. As can be seen, the two models have coefficients that run in the same directions but are different by a constant value. This difference is due to again to the different weights that the two models assign to continuous as opposed to degenerate responses in $y_i$. 
+
+These weights can be seen in the bottom row of the table for the prediction of $Pr(y_i>0 \cap Pr(y_i<1))$. While the ordered beta regression shows no particular differences across categories, the ZOIB shows positive values, indicating that richer and more educated respondents are between 5 and 10 percent more likely to use continuous versus degenerate responses. As a result, the continuous values are more influential for total marginal effect reported in Figure \@ref(fig:combinecoef). 
+
+However, it would not seem that the re-weighting differences on their own would permit the coefficients to diverge as much as they do in Figure \@ref(fig:combinecoef). The second significant difference between the two models has to do with the middle row in Figure \@ref(fig:zoebcoef), the marginal changes in probability for $Pr(y_i=0)$ and $Pr(y_i=1)$. The ordered beta regression returns relatively sensible results for these two probabilities, suggesting that the effects for education and income are mirror images of each other. High school graduates, for example, tend to hold more extreme negative views of professors, and are less likely to hold extremely positive views of professors.
+
+The ZOIB model, on the other hand, reports that high school graduates are simultaneously less likely to have extremely negative views of professors **and** extremely positive views of professors. Because these are the two ends of the scale, the diverging effects of being a high school graduate means that the **total impact of the degenerate responses on the marginal effect of education is zero**, and the ZOIB marginal effect collapses to beta regression on continuous values.
+
+This effect decomposition is very puzzling because the subjects are individual respondents. How can the average high school graduate simultaneously hold fewer extreme negative views and fewer extreme positive views on professors separately from the graduate's largely negative views over continuous values of the distribution? If the reader is at this point somewhat perplexed, it would appear to be a result of the over-parameterization of the ZOIB model in this situation. We generally do not think of respondents having divergent preferences at different points of the same scale, and as such the more parsimonious ordered beta regression is easier to intepret: high school graduates are more likely to give extreme negative scores for professors, more likely to give negative continuous scores for professors, and less likely to give extreme positive scores. These effects are not all mirror images of each due to the scaling effect of the cutpoint intercepts.
+
+One final note on the bottom row of Figure \@ref(fig:zoibcoef) are the fixed probabilities for $Pr(y_i>0 \cap Pr(y_i<1))$. These fixed values are due to the fact that the cutpoints are fixed for the entire sample. It is possible to allow the cutpoints to vary across groups, or even to parameterize the cutpoints with covariates to permit more subtle gradations. However, as the analysis with the ZOIB model shows, it is important to know theoretically why this flexibility is required, as it will affect the interpretation of the underlying estimates. The employment of cutpoints has the advantage that any additional flexibility can be incorporated as-needed rather than allowing for completely independent processes as with the ZOIB.
 
 ```{r zoibcoef,fig.cap="Comparison of Intermediate Probabilities for Ordered Beta Regression and ZOIB",fig.height=9,fig.width=6}
 
@@ -1296,9 +1368,20 @@ ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
 ```
 
 
-
 # Discussion
 
+The empirical and simulation-based analysis of the ordered beta regression model show that it is an appealing alternative to existing approaches. The application of the model in this paper is considered primarily in terms of individuals answering survey scales of one kind or another. This aspect is important to evaluating the model, as it suggests that the ordered beta regression's more parsimonious interpetation of the effect of covariates on the outcome is preferable to the more fully parameterized ZOIB. It is assumed that what the analyst desires is the effect of a covariate on the full distribution, which includes both degenerate and continuous responses. There is no particular reason to believe, however, that the effect should vary between the degenerate and continuous responses, or even between positive and negative degenerate responses.
+
+There are several other points that are worth considering when comparing ordered beta regression to the ZOIB. As Figure \@ref(fig:zoibcoef) reveals, the employment of independent processes for $y_i$ requires much more data and is likely to return large uncertainty intervals with smaller datasets. This difficulty in fitting the model is another reason that the parsimony of the ordered beta regression appears preferable, as it will allow scholars to parse heterogeneity in the different components of the scale with adequate power. The ordered beta regression model's predictions are still well-identified with very few degenerate responses in $y_i$.
+
+These results also show that predictive validity measures, especially $\hat{elpd}_{psis_loo}$ and RMSE, are of limited value when evaluating models with regard to the interpretation of findings. Another assumption in this paper is that the primary objective is to learn about the effect of covariates on the outcome rather than predicting future responses. If that were the aim, it would be worthwhile to consider a broader range of models with considerable predictive power but limited explanatory value, including random forests and neural networks. 
+
 # Conclusion
+
+This paper presented a new model for bounded continuous distributions with considerable observations on the bounds. The principal application of the model is to data collected from slider/visual analog (VAS) scales, in which a respondent has to give a score for a certain item. This paper builds on prior models in the literature incorporating the beta distribution, which has admirable properties for evaluating respondent-level data on this scale. In particular, it allows for multi-modality and considered values near the extremes to be more certain than those values in the middle.
+
+The primary problem this paper solves is to incorporate degenerate responses, or responses at 0 or 1, along with the beta distribution without sacrificing model parsimony. This is made possible by employing cutpoints as scaling intercepts that permit the 0 and 1 values to be jointly estimated with the beta regression. Compared to existing approaches, particularly zero-one-inflated beta regression (ZOIB), ordered beta regression is able to capture a unitary marginal effect of a given covariate on the outcome that is monotonic over the full response range. 
+
+For these reasons, I recommend ordered beta regression as a straightforward model to applied researches with survey scale data. The model can separately predict the probabilities of each of the outcome's components, both continuous and degenerate responses, but will do so in a way that still permits a single interpretation for the effect of the covariate on the outcome. Furthermore, the model's parsimony means that it is able to capture marginal effects at relatively lower cost in terms of data than other approaches.
 
 # References
