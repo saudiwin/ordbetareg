@@ -1,14 +1,18 @@
 ---
 title: "How to Run Ordered Beta Regression with `brms`"
 author: Robert Kubinec
-output: html_notebook
+output: html_document
 ---
 
 ```{r setup, include=F}
 
 require(brms)
 require(dplyr)
+require(tidyr)
 require(ggplot2)
+require(haven)
+
+knitr::opts_chunk$set(echo=T)
 
 set.seed(71520177)
 
@@ -19,39 +23,124 @@ This notebook contains instructions for running the ordered beta regression mode
 
 The ordered beta regression model is not natively supported in `brms` and so instead I define it here using the [custom response option](https://cran.r-project.org/web/packages/brms/vignettes/brms_customfamilies.html) of `brms`. 
 
-First, we can simulate some data using R. We are interested in capturing the value of the coefficient `X_beta` from the simulation.
+First, I load data from the Pew Forum that asks a question about respondents' views towards college professors (for a more complete explication, see the paper referenced above).
 
-```{r}
+```{r load_data}
 
-N <- 1000
+pew <- read_sav("data/W28_Aug17/ATP W28.sav") %>% 
+  mutate(therm=na_if(THERMO_THERMBC_W28,999)) %>% 
+  filter(!is.na(therm))
+
+pew %>% 
+  ggplot(aes(x=therm)) +
+  geom_histogram(bins=100) +
+  theme_minimal() + 
+  theme(panel.grid=element_blank()) +
+  scale_x_continuous(breaks=c(0,25,50,75,100),
+                     labels=c("0","Colder","50","Warmer","100")) +
+  ylab("") +
+  xlab("") +
+  labs(caption=paste0("Figure shows the distribution of ",sum(!is.na(pew$therm))," non-missing survey responses."))
+
+```
+
+The distributions of feelings towards college professors contains both degenerate (0 and 100) and continuous responses between 0 and 100. To model it, we first need to rescale the outcome so that it will have bounds between 0 and 1 instead of 0 and 100. This is done very easily by subtracting the minimum value, in this case 0, and then dividing by the difference between the minimum and maximum (i.e., 100). I also do some other data processing tasks:
+
+```{r munge_data}
+
+model_data <- select(pew,therm,age="F_AGECAT_FINAL",
+                        sex="F_SEX_FINAL",
+                        income="F_INCOME_FINAL",
+                        ideology="F_IDEO_FINAL",
+                        race="F_RACETHN_RECRUITMENT",
+                        education="F_EDUCCAT2_FINAL",
+                     region="F_CREGION_FINAL",
+                        approval="POL1DT_W28",
+                       born_again="F_BORN_FINAL",
+                       relig="F_RELIG_FINAL",
+                        news="NEWS_PLATFORMA_W28") %>% 
+    mutate_all(zap_missing) %>% 
+    drop_na %>% 
+  mutate(therm=(therm - min(therm,na.rm = T))/(max(therm,na.rm=T) - 
+                                                       min(therm,na.rm = T)),
+         news=as_factor(news,levels="labels"),
+         age=c(scale(age)),
+         race=as_factor(race,levels="labels"),
+         ideology=as_factor(ideology,levels="labels"),
+         income=as_factor(income,levels="labels"),
+         approval=as_factor(approval,levels="labels"),
+         sex=as_factor(sex,levels="labels"),
+         education=as_factor(education,levels="labels"),
+         born_again=as_factor(born_again,levels="labels"),
+         relig=as_factor(relig,levels="labels")) %>% 
+    mutate_at(c("race","ideology","income","approval","sex","education","born_again","relig"), function(c) {
+      factor(c, exclude=levels(c)[length(levels(c))])
+    }) %>% 
+    # need to make these ordered factors for BRMS
+    mutate(education=ordered(education),
+           income=ordered(income))
+
+```
+
+The completed dataset has `r nrow(model_data)` observations. 
+
+To model this data in `brms`, I have to define some code using the `custom_family` function to create a new distribution, `ord_beta_reg`. You need to run the following code in R before trying to use the custom family as it defines the log-likelihood and the priors (you can of course add additional priors of your own). You can access this code as an R script `define_ord_beta_reg.R` in the [Github repository containing this Rmarkdown file](https://github.com/saudiwin/ordbetareg).
+
+```{r customfam}
+
+# custom family
+
+ord_beta_reg <- custom_family("ord_beta_reg",
+                              dpars=c("mu","phi","cutzero","cutone"),
+                              links=c("logit","log",NA,NA),
+                              lb=c(NA,0,NA,NA),
+                              type="real")
+
+# stan code for density of the model
+
+stan_funs <- "real ord_beta_reg_lpdf(real y, real mu, real phi, real cutzero, real cutone) {
+
+    //auxiliary variables
+    real mu_logit = logit(mu);
+    vector[2] thresh;
+    thresh[1] = cutzero;
+    thresh[2] = cutzero + exp(cutone);
+    
+  if(y==0) {
+      return log1m_inv_logit(mu_logit - thresh[1]);
+    } else if(y==1) {
+      return log_inv_logit(mu_logit  - thresh[2]);
+    } else {
+      return log(inv_logit(mu_logit  - thresh[1]) - inv_logit(mu_logit - thresh[2])) +
+                beta_proportion_lpdf(y|mu,phi);
+    }
+  }"
+
+stanvars <- stanvar(scode=stan_funs,block="functions")
+
+# For pulling posterior predictions
+
+posterior_predict_ord_beta_reg <- function(i, draws, ...) {
+  mu <- draws$dpars$mu[, i]
+  phi <- draws$dpars$phi
+  cutzero <- draws$dpars$cutzero
+  cutone <- draws$dpars$cutone
+  N <- length(phi)
   
-X <- rnorm(N,0,1)
+  thresh1 <- cutzero
+  thresh2 <- cutzero + exp(cutone)
+
+  pr_y0 <- 1 - plogis(qlogis(mu) - thresh1)
+  pr_y1 <- plogis(qlogis(mu) - thresh2)
+  pr_cont <- plogis(qlogis(mu)-thresh1) - plogis(qlogis(mu) - thresh2)
+  out_beta <- rbeta(n=N,mu*phi,(1-mu)*phi)
   
-X_beta <- 1.2
-eta <- X*X_beta
+   # now determine which one we get for each observation
+  outcomes <- sapply(1:N, function(i) {
+    sample(1:3,size=1,prob=c(pr_y0[i],pr_cont[i],pr_y1[i]))
+  })
   
-# ancillary parameter of beta distribution
-phi <- 3
-  
-cutpoints <- c(-2,2)
-  
-# probabilities for three possible categories (0, proportion, 1)
-low <- 1-plogis(eta - cutpoints[1])
-middle <- plogis(eta-cutpoints[1]) - plogis(eta-cutpoints[2])
-high <- plogis(eta - cutpoints[2])
-  
-# we'll assume the same eta was used to generate outcomes
-  
-out_beta <- rbeta(N,plogis(eta) * phi, (1 - plogis(eta)) * phi) 
-  
-# now determine which one we get for each observation
-outcomes <- sapply(1:N, function(i) {
-  sample(1:3,size=1,prob=c(low[i],middle[i],high[i]))
-})
-  
-# now combine binary (0/1) with proportion (beta)
-  
-final_out <- sapply(1:length(outcomes),function(i) {
+  final_out <- sapply(1:length(outcomes),function(i) {
     if(outcomes[i]==1) {
       return(0)
     } else if(outcomes[i]==2) {
@@ -59,114 +148,134 @@ final_out <- sapply(1:length(outcomes),function(i) {
     } else {
       return(1)
     }
-})
-
-```
-
-The vector `final_out` contains both degenerate (0 and 1) and continuous responses between 0 and 1. We can see the distinct U-shape of the distribution in the following histogram:
-
-```{r hist}
-
-hist(final_out)
-
-```
-
-
-To model this in `brms`, we first use the `custom_family` function as follows:
-
-```{r customfam}
-
-# custom family
-
-ord_beta_reg <- custom_family("ord_beta_reg",
-                              dpars=c("mu","phi"),
-                              links=c("logit","log"),
-                              lb=c(NA,0),
-                              type="int",
-                              vars="vreal1[n]",
-                              threshold="flexible",
-                              specials="ordinal")
-
-# stan code for density of the model
-
-stan_funs <- "real ord_beta_reg_lpmf(int y, real mu, real phi, vector threshold,real y_cont) {
-    // depends on whether y is degenerate or not
-    real mu_logit = logit(mu);
-    if(y==1) {
-      return log1m_inv_logit(mu_logit - threshold[1]);
-    } else if(y==2) {
-      return log_inv_logit(mu_logit  - threshold[2]);
-    } else {
-      return log(inv_logit(mu_logit  - threshold[1]) - inv_logit(mu_logit - threshold[2])) +
-                beta_proportion_lpdf(y_cont|mu,phi);
-    }
-  }
+  })
   
-  real ord_beta_reg_rng(real mu, real phi, vector threshold) {
-    int outcome;
-    
-    outcome = ordered_logistic_rng(mu,threshold);
-    
-    if(outcome==1) {
-      return 0;
-    } else if(outcome==3) {
-      return 1;
-    } else {
-      return beta_proportion_rng(inv_logit(mu),phi);
-    }
-    
-  }"
-
-stanvars <- stanvar(scode=stan_funs,block="functions")
-
-to_brms_data <- tibble(y=final_out,x=X)
-to_brms_data$y_orig <- to_brms_data$y
-to_brms_data$y_cont <- ifelse(to_brms_data$y<1 & to_brms_data$y>0,to_brms_data$y,0)
-to_brms_data$y <- ifelse(to_brms_data$y %in% c(0,1),to_brms_data$y+1,
-                                3)
-to_brms_data$y <- as.integer(to_brms_data$y)
-
-posterior_predict_ord_beta_reg <- function(i, draws, ...) {
-  mu <- draws$dpars$mu[, i]
-  phi <- draws$dpars$phi
-  threshold <- draws$thres$thres
-  ord_beta_reg_rng(mu, phi, threshold)
+  final_out
+  
 }
+
+# for calculating marginal effects/conditional expectations
 
 pp_expect_ord_beta_reg <- function(draws) {
 
-  thres <- draws$thres$thres
+  cutzero <- draws$dpars$cutzero
+  cutone <- draws$dpars$cutone
+  
   mu <- draws$dpars$mu
   
-  low <- 1 - plogis(qlogis(mu) - thres[,1])
-  middle <- plogis(qlogis(mu)-thres[,1]) - plogis(qlogis(mu) - thres[,2])
-  high <- plogis(qlogis(mu) - thres[,2])
+  thresh1 <- cutzero
+  thresh2 <- cutzero + exp(cutone)
   
-  #low*0 + middle*mu + high
-  cbind(low,middle,high)
+  low <- 1 - plogis(qlogis(mu) - thresh1)
+  middle <- plogis(qlogis(mu)-thresh1) - plogis(qlogis(mu) - thresh2)
+  high <- plogis(qlogis(mu) - thresh2)
+  
+  low*0 + middle*mu + high
 }
+
+# for calcuating LOO and Bayes Factors
 
 log_lik_ord_beta_reg <- function(i, draws) {
 
-  mu <- draws$dpars$mu[i]
-  phi <- draws$dpars$phi[i]
-  y <- as.integer(draws$data$Y[i])
-  y_cont <- draws$data$vreal1[i]
-  thres <- draws$thres$thres[i,]
+  mu <- draws$dpars$mu[,i]
+  phi <- draws$dpars$phi
+  y <- draws$data$Y[i]
+  cutzero <- draws$dpars$cutzero
+  cutone <- draws$dpars$cutone
   
-  if(y==1) {
-    log(1 - plogis(qlogis(mu) - thres[1]))
-  } else if(y==2) {
-    log(plogis(qlogis(mu) - thres[2]))
+  thresh1 <- cutzero
+  thresh2 <- cutzero + exp(cutone)
+
+  if(y==0) {
+    out <- log(1 - plogis(qlogis(mu) - thresh1))
+  } else if(y==1) {
+    out <- log(plogis(qlogis(mu) - thresh2))
   } else {
-    log(plogis(qlogis(mu)-thres[1]) - plogis(qlogis(mu) - thres[2])) + dbeta(y,mu*phi,(1-mu)*phi,log=T)
+    out <- log(plogis(qlogis(mu)-thresh1) - plogis(qlogis(mu) - thresh2)) + dbeta(y,mu*phi,(1-mu)*phi,log=T)
   }
+  
+  out
   
 }
 
-brms_fit <- brm(y | thres(2) + vreal(y_cont)~x, data=to_brms_data,
+# Feel free to add any other priors / change the priors on b, 
+# which represent regression coefficients on the logit
+# scale
+
+priors <- set_prior("normal(0,5)",class="b") + 
+          prior_string("target += normal_lpdf((cutzero + exp(cutone)) - cutzero|0,3) + cutone",check=F)
+
+```
+
+Given these new functions, we can then run a `brms` model as usual. The one catch is that we need to include the `priors` object in the `priors` argument and the `stanvars` object in the `stanvars` argument of the function, which comes from the code block above. The second and *very important* item is that the model formula must start with 0 for the independent (right-hand side) variables. This is to ensure no multi-collinearity between the ordinal cutpoitns in the model and the intercept.
+
+Other than that, everything is the same and you can use any cool `brms` features. To demonstrate some of these, I will model education and income as ordinal predictors by using the `mo()` function. By doing so, we can get a single effect for education and income instead of having to use dummies for separate education/income categories. As a result, I can include an interaction between the two variables to see if wealthier more educated people have better views towards college professors than poorer better educated people. Finally, I include varying (random) census region intercepts:
+
+```{r run_brms}
+
+brms_fit <- brm(therm ~ 0 + mo(education)*mo(income) + (1|region), data=model_data,
                 family=ord_beta_reg,
+                cores=2,chains=2,
+                prior = priors,
+                refresh=0,
                 stanvars=stanvars)
 
 ```
 
+The running time for this model, which has pretty complicated predictors, is about 7 minutes. So the model is currently robust enough to handle datasets of reasonable size. Performance will improve if I can get the model into `brms` proper. The one divergent transition references aboved is due to the well-known funnel problem of the variance of the random intercepts, and I will ignore it for the purposes of this vignette.
+
+The first thing we can do is extract the model cutpoints and overlay them on the empirical distribution to see how the model is dividing the outcome into discrete-ish categories. We have to do transformation of the cutpoints using the inverse logit function in R (`plogis`) to get back values in the scale of the response, and I have to exponentiate and add the first cutpoint to get the correct value for the second cutpoint:
+
+```{r plot_cut}
+
+all_draws <- extract_draws(brms_fit)
+
+cutzero <- plogis(all_draws$dpars$cutzero)
+cutone <- plogis(all_draws$dpars$cutzero + exp(all_draws$dpars$cutone))
+
+pew %>% 
+  ggplot(aes(x=therm)) +
+  geom_histogram(bins=100) +
+  theme_minimal() + 
+  theme(panel.grid=element_blank()) +
+  scale_x_continuous(breaks=c(0,25,50,75,100),
+                     labels=c("0","Colder","50","Warmer","100")) +
+  geom_vline(xintercept = mean(cutzero)*100,linetype=2) +
+  geom_vline(xintercept = mean(cutone)*100,linetype=2) +
+  ylab("") +
+  xlab("") +
+  labs(caption=paste0("Figure shows the distribution of ",sum(!is.na(pew$therm))," non-missing survey responses."))
+
+
+```
+
+We can see in the plot above that the model does a good job isolating values that are very close to 0 and 1 from values that are more continuous in nature. 
+
+We can plot the full predictive distribution relative to the original outcome:
+
+```{r post_predict}
+
+pp_check(brms_fit)
+
+```
+
+We can see the coefficients from the model with the following command (these are on the logit scale with the exception of phi, the scale/dispersion parameter):
+
+```{r coef_plot}
+plot(brms_fit,ask=F,theme=theme(panel.grid=element_blank(),
+                                panel.background = element_blank()))
+```
+
+
+
+We can also look at marginal effects, or the average change in the outcome given a unit change in one of the variables, by using the `conditional_effects` function in `brms`. This function plots the effect of `income` and `education` separately and then the interaction of the two.
+
+```{r marg_effect}
+
+plot(conditional_effects(brms_fit),theme=theme(axis.text.x = element_text(angle=90),
+                                               panel.grid=element_blank(),
+                                               panel.background = element_blank()),ask=F)
+
+```
+
+Broadly speaking, these plots show that richer people have less favorable views on college professors, less educated people have less favorable views towards college professors, and the effect is even stronger if we consider the interaction. Wealthier less educated people are dramatically more likely to have less favorable views towards college professors than poor people with a postgraduate education. The difference is equivalent to 0.4, or 40 points on the original 0 to 100 scale.

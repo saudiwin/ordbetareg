@@ -1,5 +1,5 @@
 ---
-title: "Ordered Beta Regression: A Parsimonious, Well-Fitting Model for Zero-One Inflated Proportional Outcomes"
+title: "Ordered Beta Regression: A Parsimonious, Well-Fitting Model for Survey Sliders and Visual Analog Scales"
 bibliography: "/Users/rmk/firmbook/BibTexDatabase.bib"
 output: 
   bookdown::pdf_document2:
@@ -8,7 +8,7 @@ output:
       includes:
         in_header: preamble.tex
 
-abstract: "I propose a new model, ordered beta regression, for outcomes that are bounded between 0 and 1 (or any two constants) but also have substantial numbers of observations at the boundaries. This model employs the cutpoint technique popularized by ordered logit to simultaneously estimate the probability that the outcome is 0, 1 or any continuous number in between. This model is contrasted with existing approaches, including OLS, outcomes transformed to the (0,1) interval and outcomes with 0s and 1s removed, zero-one-inflated beta regression (ZOIB), and the continuous ordinal model. The proposed approach estimates effects with more accuracy while capturing the full dynamics of the distribution. Simulation studies illustrate the performance of the estimator while empirical examples are drawn from opinion data concerning feeling thermometer ratings towards President Donald Trump."
+abstract: "I propose a new model, ordered beta regression, for data collected from human subjects using slider scales/visual analog scales with lower and upper bounds. This model employs the cutpoint technique popularized by ordered logit to simultaneously estimate the probability that the outcome is at the upper bound, lower bound, or any continuous number in between. This model is contrasted with existing approaches, including ordinary least squares (OLS) regression and the zero-one-inflated beta regression (ZOIB) model. Simulation evidence shows that the proposed model, relative to existing approaches, estimates effects with more accuracy while capturing the full uncertainty in the distribution. Furthermore, an analysis of data on U.S. public opinion towards college professors reveals that the proposed model is better able to incorporate variation in both continuous and degenerate responses. The model can be fit with the R package brms."
 ---
 
 ```{r setup, include=F}
@@ -22,6 +22,7 @@ require(loo)
 require(kableExtra)
 require(bayesplot)
 require(patchwork)
+require(latex2exp)
 
 knitr::opts_chunk$set(echo=F,warning=F,message=F)
 
@@ -51,23 +52,23 @@ random_seed <- 77123101
 
 # Introduction
 
-The increasing sophistification of data collection in the social, medical and behavioral sciences in the last twenty years has led to adoption of slider and visual analog scales as a way to capture nuanced information from human respondents. A visual analog scale (VAS) is a continuous scale with potentially an infinite number of points along which a respondent may make a selection (though in practice, as many as 100 points are often used). As such, it can record much more variation than a Likert scale, which rarely has more than ten categories.
+The increasing sophistification of data collection in the social, medical and behavioral sciences in the last twenty years has led to adoption of slider and visual analog scales as a way to capture nuanced information from human respondents [@cooper2014;@roster2014]. A visual analog scale (VAS) is a continuous scale with potentially an infinite number of points along which a respondent may make a selection (though in practice, as many as 100 points are often used) [@wewers1990]. As such, it can record much more variation than a Likert scale, which rarely has more than ten categories.
 
-However, despite the increasing popularity of these scales, the statistical methodology used to analyze them is still very much in development. While practicioners often fall back on ordinary least squares (OLS) as a convenient and easily interpretable way to analyze the data, in reality these slider scales are rarely Normally-distributed. Respondents often locate responses at either end of the scale, leading to bi- or even tri-modal distributions. As the Normal distribution is by nature symmetric and unimodal, OLS cannot capture the dynamics of the distribution very well, leading to distorted confidence/uncertainty intervals, as I show in this paper. 
+However, despite the increasing popularity of these scales, the statistical methodology used to analyze them is still very much in development. While practicioners often fall back on ordinary least squares (OLS) as a convenient and easily interpretable way to analyze the data, in reality these slider scales are rarely Normally-distributed. Respondents often locate responses at either end of the scale, leading to bi- or even tri-modal distributions. As the Normal distribution is by nature symmetric and unimodal, OLS cannot capture the dynamics of the distribution very well, leading to distorted confidence/uncertainty intervals and coefficient estimates, as I show in this paper. 
 
-The most natural alternative, and one that has been used in the literature since @ferrari2010, is the beta regression model. While this clever parameterization permits powerful inference on these bounded, potentially bi-modal distributions, the beta regression's main flaw is that it cannot model observations that are degenerate, i.e., either 0 or 1. Various solutions have been proposed,  such as transforming the outcome so that all observations are strictly less than 0 or 1 [@verk2006], modeling 0s and 1s through separate processes via zero-one inflated beta regression (ZOIB) [@ferrari2012], and continuous ordinal regression, a semi-parametric model employing splines [.
+The most natural alternative, and one that has been used in the literature since @ferrari2010, is the beta regression model as it is a flexible continuous distribution with natural upper and lower bounds. While this clever parameterization permits powerful inference on these bounded, potentially bi-modal distributions, the beta regression's main flaw is that it cannot model observations that are degenerate, i.e., equal to the lower bound of 0 or the upper bound of 1. Various solutions have been proposed,  such as transforming the outcome so that all observations are strictly less than 0 or 1 [@verk2006], and more recently modeling 0s and 1s through separate processes via zero-one inflated beta regression (ZOIB) [@ferrari2012].
 
-A new approach is given in this paper that seeks to capture the best points of the existing approaches while simplifying the model so that it is maximally efficient in its use of information in the data. I employ ordered cutpoints, similar in spirit to an ordered logit model, to estimate the joint probability of 0s, continuous proportions, and 1s in VAS/slider scale data. As only one predictive model is used for all of the outcomes, the effect of covariates is identified with greater precision than existing approaches. The use of cutpoints, on the other hand, permits the model to fit even very degenerate distributions. 
+A new approach is given in this paper that seeks to capture the best points of the existing approaches while simplifying the model so that it is maximally efficient in its use of information in the data. I employ ordered cutpoints, similar in spirit to an ordered logit model, to estimate the joint probability of 0s (the lower bound), continuous proportions, and 1s (the upper bound) in VAS/slider scale data. As only one predictive model is used for all of the outcomes, the effect of covariates is identified with greater precision than existing approaches. The use of cutpoints permits the model to fit even very degenerate distributions with many observations on the bounds. 
 
-To compare this new model, simulations are employed to examine how each of the previous approaches compares along an array of criteria, including root mean squared error (RMSE), bias, variance, skewness, kurtosis, and the uncertainty and bias in the estimation of marginal effects defined over the whole distribution. The results show that while OLS is able to compete in the RMSE category, it fails at capturing higher-order moments of the distribution, suggesting that the uncertainty intervals it produces are inadequate descriptions of the data-generating process. The ordered beta regression model avoids this bias but is competitive with OLS in RMSE while producing more precise and accurate marginal effects than the other alternatives. 
+To compare this new model, simulations are employed to examine how each of the previous approaches compares along an array of criteria, including root mean squared error (RMSE), predictive validity, and the uncertainty and bias in the estimation of marginal effects defined over the whole distribution. The results show that while OLS is able to compete in the RMSE category, its inability to capture higher-order moments of the distribution, particularly kurtosis, make its inferences strongly influenced by the number of degenerate responses. The ordered beta regression model, on the other hand, avoids this vulnerability but is competitive with OLS in terms of estimating precise and accurate marginal effects. 
 
-To apply the model, I use data from the Pew Research Forum American Trends Panel survey of U.S. residents to examine the drivers of affect towards President Trump. As the survey employs feeling thermometers, a type of VAS scale that is bounded at 0 and 100, the issue of responses at either end of the scale is a pronounced problem, particularly for polarizing figures like U.S. President Trump.
+To apply the model, I use data from the Pew Research Forum American Trends Panel survey of U.S. residents to examine the drivers of affect towards college professors. As the survey employs feeling thermometers, a type of VAS scale that is bounded at 0 and 100, the issue of responses at either end of the scale is a pronounced problem. The analysis shows that although the ordered beta regression model and the ZOIB model are similar in many respects, the estimated effects of predictors diverge when the number of degenerate responses varies with the values of the predictor. Unhelpfully, the ZOIB model conflates the effect of a given covariate with the number of degenerate responses at each level of the covariate. The ordered beta regression model, on the other hand, produces a much more straightforward interpretation in which the effect of the covariate is equal to an average effect on the feeling thermometer combining both the degenerate and continuous values.
 
 # Background
 
-As online and digital data collection possibilities increase, so has the employment of slider scales capable of capturing finely nuanced datasets along a dimension of interest. While too broad to list all the possible applications here, slider/VAS scales have been employed prominently in medical pain research, psychological research, political science and economics. As the possibilities of dynamic interactive instruments increases, these scales are likely to become even more sophisticated, such as permitting respondents to rank options along the continuous scale. As such, it is an important empirical domain for applied statistical analysis, and one that has only been treated briefly, as discussed earlier. 
+As online and digital data collection possibilities increase, so has the employment of slider scales capable of capturing finely nuanced datasets along a dimension of interest. While too broad to list all the possible applications here, slider/VAS scales have been employed prominently in medical pain research [@roster2014], psychological research [@monk1989], and political science and economics [@cooper2014]. As the possibilities of dynamic interactive instruments increases, these scales are likely to become even more sophisticated, such as permitting respondents to rank options along the continuous scale. As such, it is an important empirical domain for applied statistical analysis, and one that has only been treated briefly, as discussed earlier. 
 
-The standard approach for modeling this type of variable is OLS regression as the variable is at least in part continuous. OLS, as the maximum entropy estimator for any continuous distribution with finite variance, is likely to capture at least some of the relevant features of the distribution. The more "Normal" the distribution, the more likely this approximation will give interpretable answers. However, @verk2006 raise important questions about this application of OLS to upper and lower-bounded dependent variables. They argue that OLS' failure to capture higher-order moments of the distribution represents a serious shortcoming because these moments, such as skewness and variance, may well affect what can be learned from the model and even the theoretical questions one can ask.
+The standard approach for modeling this type of variable is OLS regression as the variable is at least in part continuous. OLS, as the maximum entropy estimator for any continuous distribution with finite variance [@jaynes2003], is likely to capture at least some of the relevant features of the distribution. The more "Normal" the distribution, the more likely this approximation will give interpretable answers. However, @verk2006 raise important questions about this application of OLS to upper and lower-bounded dependent variables. They argue that OLS' failure to capture higher-order moments of the distribution represents a serious shortcoming because these moments, such as skewness and variance, may well affect what can be learned from the model and even the theoretical questions one can ask.
 
 As a result, beta regression has become an increasingly popular technique, though it likely is still a minority preference when handling this particular kind of outcome. The main drawback of beta regression, as mentioned earlier, is that it cannot handle 0s and 1s. The reason for this limitation is that the beta distribution can be understood as the prior conjugate distribution for a binomial probability, which is never strictly equal to 0 or 1. However, while probability theory discounts such extreme events from ocurring, human beings are much less sanguine. Particularly when there is a reason to expect extreme stimuli in the population of interest, humans have no qualms about expressing complete uncertainty in either a positive or negative direction. 
 
@@ -77,7 +78,7 @@ $$
 y_j = \frac{y_i(N-1) + 0.5}{N}
 $$
 
-The distribution of $y_i$ is nudged so that the values can never reach 0 or 1. This transformation permits beta regression modeling without any need for further modeling choices. As such, it is a computationally simple and straightforward solution. However, it is not immediately clear what ramifications this transformation has on inferences as the transformation is non-linear. Ultimately, and as I show in this paper, this transformation effectively hides the problem by moving the goal posts without improving the underlying model.
+The distribution of $y_i$ is nudged so that the values can never reach 0 or 1. This transformation permits beta regression modeling without any need for further modeling choices. As such, it is a computationally simple and straightforward solution. However, it is not immediately clear what ramifications this transformation has on inferences as the transformation is non-linear. Ultimately, and as I show in this paper, this transformation tends to deflate the effects of predictors on the outcome and has worrying distortions in how it affects the estimation of sample characterstics.
 
 The shortfall in existing strategies is what led to the development of the zero-one inflated beta regression model, an approach that this paper builds upon. While @ferrari2012 proposed a zero or one-inflated beta regression, where a discrete process could be used to model either category separately, @liu2015 show how to model both 0s and 1s in a zero-one inflated beta regression model with two distinct processes for degenerate responses. Their approach is worth considering in detail as it offers a convenient jumping off position for the model I intend to explicate. Considering the same outcome $y_i$, they estimate three separate probabilities which I label as $\alpha$ for $Pr(y_i=0)$, $\gamma$ for $Pr(y_i=1)$, and $\delta$ for $Pr(y_i>0 \cap y_i<1)$. Given these probabilities, we can define a conditional distribution over $y_i$ that depends on the realization of $y_i$ in these three mutually exclusive outcomes, along with parameters $\mu$ and $\phi$ to model the continuous outcomes via the Beta distribution (defined below):
 
@@ -97,14 +98,14 @@ f(y_i \in (0,1); \omega,\tau) = \frac{\Gamma(\omega + \tau)}{\Gamma(\omega)\Gamm
 (\#eq:beta)
 \end{equation}
 
-We directly model the mean of the beta distribution by substituting for the shape parameters $\omega$ and $\tau$:
+I this model we can directly estimate the mean of the beta distribution, $\mu$, by substituting for the shape parameters $\omega$ and $\tau$:
 
 \begin{equation}
 \mu = \frac{\omega}{\omega+\tau}\\
 \phi = \omega + \tau
 \end{equation}
 
-Given this transformation, we can directly model the expected value of the Beta distribution, $\mu$. Returning to the ZOIB model in \@ref(eq:zoib), we can see that the Beta distribution is being deflated by the probabilities $\alpha$ and $\gamma$ such that the density of the Beta distribution cannot exceed $(1-\alpha)(1-\gamma)$, i.e., $\delta$. To parameterize the model, we can include regressors $\alpha = g(X'\beta_\alpha)$,  $\gamma = X'\beta_\gamma$,  and $\mu=g(X'\beta_\delta)$ for a given matrix of covariates $X$. These linear models are rescaled with the inverse logit function $g(\cdot)$ to map on to $(0,1)$. While the covariates $X$ for each of the sub-models could be different or shared, the parameters $\beta_\alpha$, $\beta_\gamma$, and $\beta_\delta$ need to be distinct for each sub-model as the three processes are functionally independent. These categories are not ordered, and as such the outcomes of $y_i$ are exchangeable (can be re-ordered) for any given value of $\alpha$, $\gamma$ and $\delta$. 
+Returning to the ZOIB model in \@ref(eq:zoib), we can see that the Beta distribution is being deflated by the probabilities $\alpha$ and $\gamma$ such that the contribution of the Beta distribution cannot exceed $(1-\alpha)(1-\gamma)$, i.e., $\delta$. To parameterize the model, we can include regressors $\alpha = g(X'\beta_\alpha)$,  $\gamma = X'\beta_\gamma$,  and $\mu=g(X'\beta_\delta)$ for a given matrix of covariates $X$. These linear models are rescaled with the inverse logit function $g(\cdot)$ to map on to $(0,1)$. While the covariates $X$ for each of the sub-models could be different or shared, the parameters $\beta_\alpha$, $\beta_\gamma$, and $\beta_\delta$ need to be distinct for each sub-model as the three processes are functionally independent. These categories are not ordered, and as such the outcomes of $y_i$ are exchangeable (can be re-ordered) for any given value of $\alpha$, $\gamma$ and $\delta$. 
 
 While this point is rather subtle, it is very important for the modeling exercise that follows. It is possible in this model for $Pr(y_i=0)$ and $Pr(y_i=1)$ to both increase independently of $Pr(y_i>0 \cap y_i<1)$. This independence can isolate heterogeneity in either end of the slider scale such that the decision to choose a 1 or a 0 are distinct choices with no necessary connection to each other.
 
@@ -114,7 +115,7 @@ As such, the model seems to go beyond what many practitioners want from the mode
 
 # Model
 
-To resolve this problem, I present **ordered** beta regression. The main difference between this approach and the ZOIB model is to induce dependence between the three probabilities $\alpha$, $\gamma$ and $\delta$. I borrow ideas from the literature on the ordered (cumulative) logit model [@ologit1980]. We can think of the distribution of $y_i$ as being a realization of a latent cumulative distribution function $F(y_i^*)$ defined by a set of ordered cutpoints $k \in \{1,2\}$. As we only have one latent variable $y_i^*$, we can also have a single set of regressors $X'\beta$ that predict this latent variable. At very low values of $y_i^*$, we will have a discrete outcome $y_i=0$, and at very high values of $y_i^*$ we will have a discrete outcome $y=1$. For intermediate values of $y_i^*$ we will have the Beta-distributed outcome $y_i \in (0,1)$. This latent ordering is similar to the continuous ordinal model mentioned previously [CITE].
+To resolve this problem, I present *ordered* beta regression. The main difference between this approach and the ZOIB model is to induce dependence between the three probabilities $\alpha$, $\gamma$ and $\delta$. To do so, I borrow ideas from the literature on the ordered (cumulative) logit model [@ologit1980]. We can think of the distribution of $y_i$ as being a realization of a latent cumulative distribution function $F(y_i^*)$ defined by a set of ordered cutpoints $k \in \{1,2\}$ where $k_1<k_2$. As we only have one latent variable $y_i^*$, we can also have a single set of regressors $X'\beta$ that predict this latent variable. At very low values of $y_i^*$, we will have a discrete outcome $y_i=0$, and at very high values of $y_i^*$ we will have a discrete outcome $y=1$. For intermediate values of $y_i^*$ we will observe the Beta-distributed outcome $y_i \in (0,1)$.
 
 Using $y_i^*$ and cutpoints $k$, we can now re-defined the probabilities $\alpha$,$\gamma$ and $\delta$ where:
 
@@ -131,29 +132,29 @@ We can see that we can still obtain the necessary probabilities $\alpha$, $\gamm
 
 The use of ordered cutpoints further implies that separate intercepts are no longer necessary for the linear model as in \@ref(eq:zoib). The linear model is defined implicitly relative to the cutpoints on $y_i^*$ so that no further parameters are needed. This implication of using ordered cutpoints means that only two parameters, the cutpoints themselves, are required in addition to the auxiliary parameter $\phi$. Thus only two parameters more than OLS are required to fit this model, improving efficiency and information retrieval.
 
-We can express the model as a log-likelihood for a given distribution of $y_i$:
+I can express the model as a log-likelihood for a given distribution of $y_i$:
 
 \begin{equation}
 ll(y_i|K,\beta,\phi) = \sum_{i=1}^N\left\{\begin{array}{lr}
 \text{log } \left[1 - g(X'\beta - k_1)\right] & \text{if } y_i=0\\
-\text{log }\left[g(X'\beta - k_1) - g(X'\beta - k_2) \right ] \text{Beta}(g(X'\beta),\phi) & \text{if } y_i \in (0,1)\\
+\text{log }\left[g(X'\beta - k_1) - g(X'\beta - k_2) \right ] + \text{Beta}(g(X'\beta),\phi) & \text{if } y_i \in (0,1)\\
 \text{log }g(X'\beta - k_2) & \text{if } y_i=1\\
 \end{array}\right\}
 (\#eq:ll)
 \end{equation}
 
-To consider the model from a Bayesian perspective, we can assign weakly informative priors to the parameters. We define these as:
+To consider the model from a Bayesian perspective, I assign weakly informative priors to the parameters. We define these as:
 
 \begin{align}
 \beta &\sim N(0,5)\\
 \phi &\sim E(1)\\
-k_2 - k_1 &\sim N(0,5)\\
+k_2 - k_1 &\sim N(0,5)
 (\#eq:prior)
 \end{align}
 
 I define a difference prior over the cutpoints $K$ because it is difficult to know a priori the location of $k_1$ and $k_2$. The weakly informative prior on the difference implies that we expect the difference to lie somewhere between $[-5,+5]$ on the logit scale, which is quite wide. Similarly, the prior on $\beta$ is weakly informative on the logit scale. The exponential prior on $\phi$ similarly puts prior mass on a wide range of values due to its long tail. 
 
-We can further consider parameterizing $\phi$ to model higher moments in the distribution. A higher value of $\phi$ for a given value of $\mu$ is associated with extreme values, either 0, 1 or both depending on the value of $\mu$. This kind of information can be useful to analyze in a context where understanding which respondents/subjects tend to choose middle versus extreme values is a research question of interest. To do so we simply replace $\phi$ in \@ref(eq:ll) with a set of regressors $\beta_\phi$ and a covariate matrix $X$ (the covariates could be shared or different from those used to predict the mean of the distribution). Fitting covariates to $\phi$ can also dramatically improve the fit of the model as is shown in the empirical example. 
+It is possible to further parameterize $\phi$ to model higher moments in the distribution. A higher value of $\phi$ for a given value of $\mu$ is associated with extreme values, either 0, 1 or both depending on the value of $\mu$. This kind of information can be useful to analyze in a context where understanding which respondents/subjects tend to choose middle versus extreme values is a research question of interest. To do so we simply replace $\phi$ in \@ref(eq:ll) with a set of regressors $\beta_\phi$ and a covariate matrix $X$ (the covariates could be shared or different from those used to predict the mean of the distribution). Fitting covariates to $\phi$ can also dramatically improve the fit of the model as is shown in the empirical example. 
 
 I can now define a joint log posterior distribution over $y_i$ conditional on the log-likelihood function and set of parameters:
 
@@ -178,13 +179,13 @@ If $y_{repO}^s$ is equal to 1 or 3, then assign 0 and 1 respectively to $y_{rep}
 
 \begin{align}
 y_{rep}^s = 0& \text{ if } y_{repO} = 1\\
-y_{rep}^s = 1& \text{ if } y_{rep)} = 3
+y_{rep}^s = 1& \text{ if } y_{repO} = 3
 \end{align}
 
 I then draw from the Beta distribution if $y_{repO}=2$. 
 
 \begin{equation}
-y_rep^s \sim \text{Beta}(\mu_s,\phi_s) 
+y_{rep}^s \sim \text{Beta}(\mu_s,\phi_s) 
 \end{equation}
 
 In addition to this predictive distribution, I also examine measures of model fit. I use an estimate of leave-one-out (LOO) predictive density in which the posterior predictive distribution is evaluated by dropping a data point $y_i$, estimating the model, and predicting the held out $y_i$. Given that this measure is computationally challenging with Bayesian inference, I employ an approximation from @gelman2016, the Pareto-stabilized important sampling (PSIS)-LOO predictive density:
@@ -200,17 +201,17 @@ Finally, I also estimate sample average marginal effects for each parameter $c$ 
 
 # Simulations
 
-To compare the models, I simulate data in a manner consistent with the distribution defined in the previous section. Because the results of simulations can be sensitive to the particular values of parameters, I draw from a broad range of possible values to simulate the ordered beta regression model. For a given covariate effect $\beta_x$, scalar dispersion parameter $\phi$, and cutpoints $c \in \{1,2\}$, these ranges are defined as:
+To compare the models, I simulate data in a manner consistent with the distribution by using the formula described above. Because the results of simulations can be sensitive to the particular values of parameters, I draw from a broad range of possible values to simulate the ordered beta regression model. For a given covariate effect $\beta_x$, scalar dispersion parameter $\phi$, and cutpoints $c \in \{1,2\}$, these ranges are defined as:
 
-\begin{equation}
-\beta_x \sim U(-2,2)\\
-\phi \sim U(0.5,4)\\
-c_1 \sim U(-5,-1)\\
-c_2 \sim c_1 + U(0.5,5)
+\begin{align}
+\beta_x &\sim U(-2,2)\\
+\phi &\sim U(0.5,4)\\
+c_1 &\sim U(-5,-1)\\
+c_2 &\sim c_1 + U(0.5,5)
 (\#eq:simval)
-\end{equation}
+\end{align}
 
-The total number of observations $N$ is also suampled from a uniform distribution between 100 and 2000. For this simulation, 10,000 independent variates were drawn from the distributions above. Because the broad bounds on the parameters permit relatively sparse distributions, such as no zeros or ones (or no continuous values), any set of parameter values that could not produce at least five observations from the zeroes, ones and continuous parts of the distribution was discarded. This procedure ensures that a range of models can all be compared to each other without encountering estimation problems. 
+The total number of observations $N$ is also sampled from a uniform distribution between 100 and 2000. For this simulation, 10,000 independent variates were drawn from the distributions above. Because the broad bounds on the parameters permit relatively sparse distributions, such as no zeros or ones (or no continuous values), any set of parameter values that could not produce at least five observations from the zeroes, ones and continuous parts of the distribution was discarded. This procedure ensures that a range of models can all be compared to each other without encountering estimation problems. 
 
 In addition to the ordered beta regression model specified above, four other models were fit to the data. Two kinds of beta regression models were fit, one using the transformation specified in @verk2006 and the second only using the continuous values of the distribution (discarding degenerate outcomes). The two other models include the ZOIB model specified above and a Bayesian version of OLS. 
 
@@ -229,9 +230,6 @@ The bottom right panel shows root mean square error (RMSE), defined as the squar
 The middle and lower-left panels in the figure show results for $\hat{elpd}_{PSIS-LOO}$ (the statistic cannot be calculated for the beta regressions because the outcome must be the same across models). In a departure from the other metrics, ordered beta regression does not receive the highest absolute $\hat{elpd}_{PSIS-LOO}$ scores (middle panel) nor does it rank the highest on average (bottom left panel). This discrepancy suggests that in terms of predictive validity, or the likelihood of the model being true given the observed data, OLS in fact provides a better fit to the data. However, the average ranks suggest that OLS does not always fit better, as its average rank is only slightly better than ordered beta regression. This finding suggests that OLS' performance is dependent on certain characteristics of the distribution which are worth considering further.
 
 As the RMSE metric shows in Figure \@ref(fig:comparebase), OLS does an excellent job capturing the average value of the outcome. However, because OLS is symmetric, unimodal, and defined over all real numbers, it does not perform so well at capturing other sample moments. Given the peculiar nature of the distribution defined above, which can be effectively tri-modal, it is worth considering kurtosis as an important sample characteristic. Kurtosis measures the heaviness of the tails of a distribution, such that more extreme values increase kurtosis. The Normal (Gaussian) distribution is defined as having a fixed kurtosis value of 3, which means that it cannot by definition capture any higher or lower kurtosis values. 
-
-To show kurtosis may be affecting the quality of OLS estimates, I plot kurtosis against $\hat{elpd}_{PSIS-LOO}$ scores in figure .
-
 
 
 ```{r comparebase,fig.cap="Comparison of Simulation Performance Results",fig.width=6,fig.height=9}
@@ -275,10 +273,10 @@ all_sim %>%
                          type=="5% - 95% Coverage"~.90,
                          TRUE~NA_real_)) %>% 
   ggplot(aes(y=estimate,x=model)) +
-  stat_summary(fun.data=my_conf_fun,geom="pointrange") +
+  stat_summary(fun.data=my_conf_fun,geom="pointrange", na.rm=TRUE) +
   facet_wrap(~type,scales="free_x",dir="v") +
   theme_minimal() +
-  geom_hline(aes(yintercept=hline),linetype=2) +
+  geom_hline(aes(yintercept=hline),linetype=2, na.rm=TRUE) +
   ylab("") +
   xlab("") +
   theme(panel.grid=element_blank(),
@@ -287,18 +285,33 @@ all_sim %>%
 
 ```
 
-```{r lookurt}
+To show kurtosis may be affecting the quality of OLS estimates, I plot the sample kurtosis from each simulation draw against $\hat{elpd}_{PSIS-LOO}$ scores in Figure \@ref(fig:lookurt). As can be seen, at lower values of kurtosis, OLS tends to have higher predictive validity than ordered beta regression. However, once kurtosis values reach a threshold of approximately 9, OLS starts to perform worse than ordered beta regression. 
 
-# all_sim %>% 
-#   select(model,loo_val)
-#   gather(key = "type",value="estimate",-model) %>% 
+The reason for this differing performance has to do with what kurtosis measures: the extent to which the density of the probability distribution (i.e., the amount of variance) is concentrated in the tails of the distribution. For slider scale/VAS data, higher kurtosis is a sign of a strong U-shape in which there are relatively few continuous values, or the continuous values are distributed uniformly, but with pronounced degenerate responses at 0 or 1. Because the Normal distribution is uni-modal and symmetric, it will be unable to capture the relevant features of this distribution. The relatively poorer performance of ordered beta regression at very low kurtosis values (the theoretical lower bound of kurtosis is 1) is primarily an artifact of distributions in which there is only one degenerate response, i.e. 0 or 1, with few if any continuous values.
+
+As a result, even without looking at empirical examples, it is difficult to recommend OLS as a general approach for analyzing this type of data. The fact that model performance is so strongly determined by a fairly common feature of the data-generating process means that inferences will tend to be obscured by whether sample kurtosis is high or low. Furthermore, while in this simulation the use of a single continuous predictor means that we can evaluate kurtosis on the entire sample, in realistic situations, it is *conditional* kurtosis, which matters, or the distribution of the outcome conditional on covariate values. The sample kurtosis could then be low but it could be very high for a subset of the respondents who tend to report extreme values. As will be shown in the empirical example to follow, this exact situation is relatively easy to observe with human subjects.
+
+```{r lookurt,fig.cap="Comparison of $\\hat{elpd}_{psis_loo}$ by Sample Kurtosis Values", message=F}
+
+all_sim %>%
+  select(model,loo_val,true_kurt) %>% 
+  filter(model %in% c("OLS","Ordinal Beta Regression")) %>% 
+  ggplot(aes(y=loo_val,x=true_kurt)) +
+  #geom_point(aes(colour=model),alpha=0.1) +
+  stat_smooth(aes(colour=model,linetype=model),method="gam",formula = y ~ s(x, bs = "cs")) + 
+  ylab(TeX("$\\hat{elpd}_{psis_loo}$")) +
+  xlab("Sample Kurtosis") +
+  guides(color=guide_legend(title=""),
+         linetype=guide_legend(title="")) +
+  geom_vline(xintercept=3, linetype=3) +
+  scale_x_log10()
 
 ```
 
 
 # Empirical Examples
 
-To analyze the model in an applied setting I use data from the Pew Forum American Trends Panel. This survey tracks a sample of Americans over time on a variety of political and social opinions. In this section I study the August 2017 wave of the panel, which consisted of 4,971 U.S. adults via an online sampling frame. As I am interested in studying the effect of certain variables on an outcome in the survey rather than making population inference via sample propotions, I ignore the sampling design in the analysis that follows.\footnote{As variables that affect sample inclusion, such as education and political affiliation, enter into the model, sample inclusion probabilities are implicitly controlled for when calculating the effects of interest.}
+To analyze the model in an applied setting I use data from the Pew Forum American Trends Panel. This survey tracks a sample of Americans over time on a variety of political and social opinions. In this section I study the August 2017 wave of the panel, which consisted of 4,971 U.S. adults via an online sampling frame. As I am interested in studying the effect of certain variables on an outcome in the survey rather than making population inference via sample propotions, I ignore the sampling design in the analysis that follows.\footnote{As variables that affect sample inclusion, such as education and political affiliation, enter into the model, sample inclusion probabilities are implicitly controlled for when calculating the effects of interest [@gelman2007].}
 
 The main dependent variable of interest is a feeling thermometer question in which respondents were asked to rate a number of different social actors based on a 0 to 100 scale, where higher values indicate warmer feelings. The thermometer I will analyze is the respondents' affect towards college professors. As this thermometer was only shown to half of the panel, the final dataset amounts to 2,538 complete obvservations. A histogram of the dependent variable is shown in Figure \@ref(fig:loaddata).
 
@@ -309,14 +322,10 @@ pew <- haven::read_sav("data/W28_Aug17/ATP W28.sav") %>%
   mutate(therm=na_if(THERMO_THERMBC_W28,999)) %>% 
   filter(!is.na(therm))
 
-bind_rows(list(tibble(therm=pew$therm,
-                 Type="Full\nDistribution"),
-          tibble(therm=pew$therm[pew$therm>0 & pew$therm<1],
-                Type="Continuous\nDistribution"),
-          tibble(therm=pew$therm[pew$therm>0 & pew$therm<1 & pew$therm!=0.5],
-                 Type="Continuous\nWithout Midpoint"))) %>% 
+tibble(therm=pew$therm,
+                 Type="Full\nDistribution") %>% 
   ggplot(aes(x=therm)) +
-  geom_histogram() +
+  geom_histogram(bins=100) +
   theme_minimal() + 
   theme(panel.grid=element_blank()) +
   scale_x_continuous(breaks=c(0,25,50,75,100),
@@ -326,7 +335,7 @@ bind_rows(list(tibble(therm=pew$therm,
   xlab("") +
   labs(caption=paste0("Figure shows the distribution of ",sum(!is.na(pew$therm))," non-missing survey responses."))
 
-ggsave("college_prof.png",width=7,height=4,units="in",scale=1.1)
+#ggsave("college_prof.png",width=5,height=3,units="in",scale=1.1)
 
 ```
 
@@ -480,6 +489,7 @@ Figure \@ref(fig:loaddata) reveals some of the very common issues with these sor
   yrep_ord_infl <- as.matrix(fit_pew_infl,"regen_all")
   
 # iterate over columns to get marginal effects
+# first for phi reg
 
 mat_data <- rbind(X_degen,X_prop)
 
@@ -521,15 +531,8 @@ all_vars_ord_phi <- lapply(1:ncol(mat_data),function(c) {
   
   tibble(marg=margin_ord,variable=colnames(mat_data)[c])
 }) %>% bind_rows
-
-# now for phi reg
-
-cutpoints_est_phi <- as.matrix(fit_pew_phireg,"cutpoints")
-  X_beta_ord_phi <- as.matrix(fit_pew_phireg,"X_beta")
- # X_beta_ord_miss <- as.matrix(fit_pew_infl,"X_beta_miss")
-  yrep_ord_phi <- as.matrix(fit_pew_phireg,"regen_all")
   
-# iterate over columns to get marginal effects
+# iterate over columns to get marginal effects for regression without phi reg
   
 mat_data_miss <- rbind(X_degen_miss,X_prop_miss)
 
@@ -571,13 +574,12 @@ all_vars_ord <- lapply(1:ncol(mat_data),function(c) {
 
   tibble(marg=margin_ord,variable=colnames(mat_data)[c])
 }) %>% bind_rows
-# 
+
 ```
-#
+
 ```{r fitlm,include=F}
-# 
-# # check with OLS
-# 
+
+# Fit OLS
 if(run_model) {
   pew_fit_lm <- stan_lm(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data,
                       chains=2,iter=2000,cores=2,prior=NULL,
@@ -823,34 +825,11 @@ all_vars_beta_prop <- lapply(2:ncol(mat_data),function(c,X_beta=NULL) {
 
 loo_ord <- loo(fit_pew,"ord_log",
                cores=2)
-
 loo_ord_infl <- loo(fit_pew_infl,"ord_log",
                cores=2)
-
 loo_ord_phireg <- loo(fit_pew_phireg,"ord_log",cores=2)
-
 loo_zoib <- loo(zoib_fit,"zoib_log",cores=2)
 loo_lm <- loo(pew_fit_lm,cores=2)
-# loo_beta_trans <- loo(beta_trans_fit,cores=2)
-#loo_beta_prop <- loo(beta_prop_fit)
-
-# # compare discrete vs. continuous separately
-# ord_log <- as.array(fit_pew,"ord_log")
-# zoib_log <- as.array(zoib_fit,"zoib_log")
-# lm_log <- log_lik(pew_fit_lm)
-# 
-# # look at everything without 0.5s
-# 
-# nopoint5 <- model_data$therm != 0.5
-# nopoint5_ord <- c(to_bl$outcome_degen,to_bl$outcome_prop) != 0.5
-# 
-# loo_ord_no5 <- loo(ord_log[,,nopoint5_ord],r_eff=relative_eff(exp(ord_log[,,nopoint5_ord])),
-#                cores=2)
-# loo_zoib_no5 <- loo(zoib_log[,,nopoint5],
-#                 r_eff=relative_eff(exp(zoib_log[,,nopoint5])),
-#                cores=2)
-# loo_lm_no5 <- loo(lm_log[,nopoint5],
-#               r_eff=relative_eff(exp(lm_log[,nopoint5]),chain_id=rep(1:2,each=1000)))
 
 ```
 
@@ -859,7 +838,7 @@ I fit each of the models in the simulation to the empirical data. Unfortunately,
 
 
 
-```{r modcompare, fig.cap="Comparison of Model Diagnostics for Regression of Thermometer Ratings Towards U.S. College Professors",fig.width=6,fig.height=6}
+```{r modcompare, fig.cap="Comparison of Model Diagnostics for Regression of Thermometer Ratings Towards U.S. College Professors",fig.width=5,fig.height=3}
 
 # need to reduce iterations in zoib model
 
@@ -890,32 +869,6 @@ kurt_zoib <- apply(yrep_zoib,1,moments::kurtosis)
 kurt_beta_trans <- apply(yrep_beta_trans,1,moments::kurtosis)
 
 kurt_beta_prop <- apply(yrep_beta_prop,1,moments::kurtosis)
-
-# let's do coefficient of determination
-
-coef_d_ord <- apply(yrep_ord, 1, function(c) {
-  pi1 <- mean(c[1:to_bl$N_degen][to_bl$outcome_degen==1])
-  pi0 <- mean(c[1:to_bl$N_degen][to_bl$outcome_degen==0])
-  pi1 - pi0
-}) 
-
-coef_d_zoib <- apply(yrep_zoib, 1, function(c) {
-  pi1 <- mean(c[model_data$therm==1])
-  pi0 <- mean(c[model_data$therm==0])
-  pi1 - pi0
-})
-
-coef_d_trans_beta <- apply(yrep_beta_trans, 1, function(c) {
-  pi1 <- mean(c[model_data$therm==1])
-  pi0 <- mean(c[model_data$therm==0])
-  pi1 - pi0
-})
-
-coef_d_lm <- apply(yrep_ols, 1, function(c) {
-  pi1 <- mean(c[model_data$therm==1])
-  pi0 <- mean(c[model_data$therm==0])
-  pi1 - pi0
-})
 
 # do rmse + kurtosis
 
@@ -954,7 +907,7 @@ For OLS, which is defined over all real numbers, the value of 0.5 is not intrins
 It is possible to capture the pronounced mode at 0.5 using ordered beta regression by adding additional ordered cutpoints. I do not do so here as more precisely modeling this mode is unlikely to affect the substantive results in the model. In the appendix I consider a model with additional cutpoints that can reproduce the mode but does not seem to have any other notable differences other than slightly lower predictive validity. In all, the visual analysis provides yet another reason to reject OLS as a suitable model for this type of data as it will down-weight values at the extremes, which contain a lot of information about respondent preferences, in favor of values in the middle which contain relatively little information about respondent preferences. As can be seen, absent this one mode, both ordered beta regression and ZOIB provide reasonable coverage of the full empirical cumulative density of the posterior relative to the observed data.
 
 
-```{r postpred,fig.cap="Comparison of Full Posterior Predictive Distributions for Models"}
+```{r postpred,fig.cap="Comparison of Sample to Posterior Empirical Cumulative Distribution for Models"}
 
 sample_rows <- sample(1:nrow(yrep_ord),100)
 
@@ -970,7 +923,9 @@ beta_trans_dens <- ppc_ecdf_overlay(as.numeric(model_data$therm),yrep_beta_trans
   ggtitle("Transformed Beta")
 
 lm_dens + ord_dens + zoib_dens + beta_trans_dens +
-  plot_layout(guides = 'collect')
+  plot_layout(guides = 'collect') +
+  plot_annotation(caption=TeX("Posterior Distribution of $y$"),
+                  theme=theme(plot.caption = element_text(hjust=0.5)))
 ```
 
 Because I do not have access to the true underlying data generative process, I compare estimated marginal effects from each model. These are reported for the different predictors in the model in Figure \@ref(fig:combinecoef). These results are intriguing both for their similarities and differences. For some covariates, such as age, sex and political ideology, the models return almost identical results (even for the beta regression on continuous values). However, for other variables, the models diverge quite significantly. The most pronounced differences are for education and income where the effects for ordered beta regression and the ZOIB are noticeably far apart, and sometimes even of different signs.
@@ -1095,7 +1050,7 @@ Table \@ref(tab:extreme) shows the separate calculations of average thermometer 
 
 These comparisons can help us understand the divergent marginal effects reported in Figure \@ref(fig:combinecoef). Beta regression with only continuous values shows no differentiation among education categories, while for income categories it shows an **opposite** relationship, with richer respondents holding stronger views for college professors. OLS, which also downplays values at the extremes, is close to the continuous beta distribution in its interpretation of these effects. The transformed beta regression is close to the continuous distributions for education, and quite confusingly, close to the ordered beta regression for income (as has probably become clear by this point, this transformation has potentially severe consequences on correctly modeling the response).
 
-While it is intuitive to understand why OLS and the continuous beta regression would diverge from ordered beta regression, I still have not explained with the ZOIB does so as well. The answer can be seen in the right-most column in Table \@ref(tab:extreme). Not only do poorer and less educated respondents give higher scores among the degenerate responses for college professors, but they are also more likely to give degenerate responses as a proportion of their total responses. As a result, the ZOIB model **downweights** the degenerate responses for the poorer/less educated respondents while it **upweights** continuous responses for the richer/more educated respondents.
+While it is intuitive to understand why OLS and the continuous beta regression would diverge from ordered beta regression, I still have not explained with the ZOIB does so as well. The answer can be seen in the right-most column in Table \@ref(tab:extreme). Not only do poorer and less educated respondents give higher scores among the degenerate responses for college professors, but they are also more likely to give degenerate responses as a proportion of their total responses. As a result, the ZOIB model *downweights* the degenerate responses for the poorer/less educated respondents while it *upweights* continuous responses for the richer/more educated respondents.
 
 
 ```{r extreme}
@@ -1108,9 +1063,9 @@ model_data %>% select(Income=income,Education=education,everything()) %>%
   gather(key="Variable",value="Value", Income, Education) %>% 
   select(Variable, Value, everything()) %>% 
   group_by(Variable,Value) %>% 
-  summarize(`Mean Thermometer`=round(mean(therm),2),
-            `Mean Continuous Thermometer`=round(mean(therm[therm>0 & therm<1]),2),
-            `Mean Degenerate Thermometer`=round(mean(therm[therm %in% c(0,1)]),2),
+  summarize(`Mean Thermometer`=round(mean(therm)*100,1),
+            `Mean Continuous Thermometer`=round(mean(therm[therm>0 & therm<1])*100,1),
+            `Mean Degenerate Thermometer`=round(mean(therm[therm %in% c(0,1)])*100,1),
             `Proportion Degenerate Responses`=round((sum(therm %in% c(0,1)))/n(),2)) %>% 
   mutate(Value=factor(Value,levels=c(levels(model_data$education),levels(model_data$income))))  %>% 
   ungroup %>% 
@@ -1124,7 +1079,7 @@ model_data %>% select(Income=income,Education=education,everything()) %>%
                align=c("l","c","c","c","c"),
                booktabs=T,escape = T) %>% 
   kable_styling(latex_options=c("striped")) %>% 
-  column_spec(2:4,width="2cm") %>% 
+  column_spec(2:5,width="2cm") %>% 
   pack_rows("Education",1,6) %>% 
   pack_rows("Income",7,15)
   
@@ -1134,11 +1089,11 @@ model_data %>% select(Income=income,Education=education,everything()) %>%
 
 This confusing behavior can be visualized by examining the model coefficients for each of the outcome's components, $Pr(y_i=0)$, $Pr(y_i=1)$ and $Pr(y_i>0 \cap Pr(y_i<1))$. The effects of income and education on each of these components for the ZOIB and ordered beta regression are shown in Figure \@ref(fig:zoibcoef). First, the top row shows the coefficient values for the predictors of the unweighted Beta regression component. As can be seen, the two models have coefficients that run in the same directions but are different by a constant value. This difference is due to again to the different weights that the two models assign to continuous as opposed to degenerate responses in $y_i$. 
 
-These weights can be seen in the bottom row of the table for the prediction of $Pr(y_i>0 \cap Pr(y_i<1))$. While the ordered beta regression shows no particular differences across categories, the ZOIB shows positive values, indicating that richer and more educated respondents are between 5 and 10 percent more likely to use continuous versus degenerate responses. As a result, the continuous values are more influential for total marginal effect reported in Figure \@ref(fig:combinecoef). 
+These weights can be seen in the bottom row of the table for the prediction of $Pr(y_i>0 \cap Pr(y_i<1))$. While the ordered beta regression shows no particular differences across categories, the ZOIB shows positive values, indicating that richer and more educated respondents are between 5 and 10 percent more likely to use continuous versus degenerate responses. As a result, the continuous values are more influential for the total marginal effect reported in Figure \@ref(fig:combinecoef). 
 
-However, it would not seem that the re-weighting differences on their own would permit the coefficients to diverge as much as they do in Figure \@ref(fig:combinecoef). The second significant difference between the two models has to do with the middle row in Figure \@ref(fig:zoebcoef), the marginal changes in probability for $Pr(y_i=0)$ and $Pr(y_i=1)$. The ordered beta regression returns relatively sensible results for these two probabilities, suggesting that the effects for education and income are mirror images of each other. High school graduates, for example, tend to hold more extreme negative views of professors, and are less likely to hold extremely positive views of professors.
+However, it would not seem that the re-weighting differences on their own would permit the coefficients to diverge as much as they do in Figure \@ref(fig:combinecoef). The second significant difference between the two models has to do with the middle row in Figure \@ref(fig:zoibcoef), the marginal changes in probability for $Pr(y_i=0)$ and $Pr(y_i=1)$. The ordered beta regression returns relatively sensible results for these two probabilities, suggesting that the effects for education and income are mirror images of each other. High school graduates, for example, tend to hold more extreme negative views of professors, and are less likely to hold extremely positive views of professors.
 
-The ZOIB model, on the other hand, reports that high school graduates are simultaneously less likely to have extremely negative views of professors **and** extremely positive views of professors. Because these are the two ends of the scale, the diverging effects of being a high school graduate means that the **total impact of the degenerate responses on the marginal effect of education is zero**, and the ZOIB marginal effect collapses to beta regression on continuous values.
+The ZOIB model, on the other hand, reports that high school graduates are simultaneously less likely to have extremely negative views of professors and extremely positive views of professors. Because these are the two ends of the scale, the diverging effects of being a high school graduate means that the *total impact of the degenerate responses on the marginal effect of education is zero*, and the ZOIB marginal effect collapses to beta regression on continuous values.
 
 This effect decomposition is very puzzling because the subjects are individual respondents. How can the average high school graduate simultaneously hold fewer extreme negative views and fewer extreme positive views on professors separately from the graduate's largely negative views over continuous values of the distribution? If the reader is at this point somewhat perplexed, it would appear to be a result of the over-parameterization of the ZOIB model in this situation. We generally do not think of respondents having divergent preferences at different points of the same scale, and as such the more parsimonious ordered beta regression is easier to intepret: high school graduates are more likely to give extreme negative scores for professors, more likely to give negative continuous scores for professors, and less likely to give extreme positive scores. These effects are not all mirror images of each due to the scaling effect of the cutpoint intercepts.
 
@@ -1201,10 +1156,10 @@ zoib_all <- lapply(1:ncol(mat_data_small),function(c,coef_a,coef_m,coef_g,alpha)
              mean(marg_eff_1),
              mean(marg_middle),
              mean(marg_eta)),
-             estimate=c("Pr(y=0)",
-                        "Pr(y=1)",
-                        "Pr(y>0 U y<1)",
-                        "Beta(y)"))
+             estimate=c(TeX("$Pr(y=0)$",output="text"),
+                        TeX("$Pr(y=1)$",output="text"),
+                        TeX("$Pr(y>0 \\cap y<1)$",output="text",
+                        TeX("Beta($y$)",output="text"))))
   },c) %>% bind_rows
   
 
@@ -1262,10 +1217,10 @@ ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
              mean(marg_eff_1),
              mean(marg_middle),
              mean(marg_eta)),
-             estimate=c("Pr(y=0)",
-                        "Pr(y=1)",
-                        "Pr(y>0 U y<1)",
-                        "Beta(y)"))
+             estimate=c(TeX("$Pr(y=0)$",output="text"),
+                        TeX("$Pr(y=1)$",output="text"),
+                        TeX("$Pr(y>0 \\cap y<1)$",output="text",
+                        TeX("Beta($y$)",output="text"))))
   },c) %>% bind_rows()
   
   margin_ord$variable <- colnames(mat_data)[c]
@@ -1361,9 +1316,121 @@ ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
   ylab("Thermometer Scores") +
   theme(legend.position = "top") +
   guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
-  facet_wrap(~estimate+group_list,scales="free",ncol=2) +
+  facet_wrap(~estimate+group_list,scales="free",ncol=2,labeller = label_parsed) +
   xlab("") +
   coord_flip()
+
+```
+
+Finally, Figure \@ref(fig:phireg) shows the effect of covariates on $\phi$, or the dispersion/scale parameter in an ordered beta regression. Higher values of $\phi$ indicate that respondents tend to cluster together in their views; lower values imply respondents tend to move towards the extremes in opposite directions. As can be seen, the effects of predictors on $\phi$ are intriguing, as wealthier and more educated respondents are more likely to hold much more heterogeneous views, while poorer, less educated and more conservative respondents tend to cluster together. As we are separately modeling 0s and 1s, it is important to note that this heterogeneity does not include degenerate responses. As this figure shows, a properly parameterized beta regression model can provide fascinating insights about human behavior and opinion.
+
+```{r phireg,fig.cap="Effects of Covariates on Thermometer Dispersion (Extreme Responses),fig.height=8,width=5"}
+
+recode_marg_phi <- all_vars_ord_phi %>% 
+  mutate(variable=recode(variable,
+                         `raceBlack non-Hispanic`="Black",
+         `raceHispanic`="Hispanic",
+         `raceOther`="Other Race",
+         `sexFemale`="Female",
+         `income10 to under $20,000`="$10k - $20k",
+         `income20 to under $30,000`="$20k - $30k",
+         `income30 to under $40,000`="$30k - $40k",
+         `income40 to under $50,000`="$40k - $50k",
+         `income50 to under $75,000`="$50k - $75k",
+         `income75 to under $100,000`="$75k - $100k",
+         `income100 to under $150,000 [OR]`="$100k - $150k",
+         `income$150,000 or more`="> $150k",
+         `ideologyConservative`="Conservative",
+         `ideologyModerate`="Moderate",
+         `ideologyLiberal`="Liberal",
+         `ideologyVery liberal`="Very Liberal",
+         `approvalDisapprove`="Disapprove Trump",
+         age="Age",
+         `educationSome college, no degree`="Some College",
+         `educationHigh school graduate`="H.S. Graduate",
+         `educationAssociate’s degree`="Associate's",
+         `educationCollege graduate/some postgrad`="College Grad",
+         `educationPostgraduate`="Postgraduate",
+         `born_againNo, not born-again or evangelical Christian`="Born Again",
+         `religRoman Catholic`="Roman Catholic",
+         `religMormon (Church of Jesus Christ of Latter-day Saints or LDS)`="Mormon",
+         `religOrthodox (such as Greek, Russian, or some other Orthodox church)`="Orthodox",
+         `religSomething else, Specify:`="Other Religion"),
+         variable=factor(variable,levels=c("Conservative",
+                                           "Moderate",
+                                           "Liberal",
+                                           "Very Liberal",
+                                           "Disapprove Trump",
+                                           "Age",
+                                           "Female",
+                                           "Black",
+                                           "Hispanic",
+                                           "Other Race",
+                                           "H.S. Graduate",
+                                           "Some College",
+                                           "Associate's",
+                                           "College Grad",
+                                           "Postgraduate",
+                                           "Born Again",
+                                           "Roman Catholic",
+                                           "Mormon",
+                                           "Orthodox",
+                                           "Other Religion",
+                                           "$10k - $20k",
+                                           "$20k - $30k",
+                                           "$30k - $40k",
+                                           "$40k - $50k",
+                                           "$50k - $75k",
+                                           "$75k - $100k",
+                                           "$100k - $150k",
+                                           "> $150k")),
+         group_list=forcats::fct_collapse(variable,
+                                          `Ideology\nBaseline=Very\nConservative`=c("Conservative",
+                                           "Moderate",
+                                           "Liberal",
+                                           "Very Liberal",
+                                           "Disapprove Trump"),
+                                          Demographics=c("Age",
+                                           "Female",
+                                           "Black",
+                                           "Hispanic",
+                                           "Other Race"),
+                                          `Education\nBaseline=Less Than H.S.`=c("Some College",
+                                           "H.S. Graduate",
+                                           "Associate's",
+                                           "College Grad",
+                                           "Postgraduate"),
+                                          `Religion\nBaseline=Protestant`=c("Born Again",
+                                           "Roman Catholic",
+                                           "Mormon",
+                                           "Orthodox",
+                                           "Other Religion"),
+                                          `Income\nBaseline= <$10k`=c("$10k - $20k",
+                                           "$20k - $30k",
+                                           "$30k - $40k",
+                                           "$40k - $50k",
+                                           "$50k - $75k",
+                                           "$75k - $100k",
+                                           "$100k - $150k",
+                                           "> $150k")))
+  recode_marg_phi %>% 
+    group_by(variable,group_list) %>% 
+    mutate(marg=marg*100) %>% 
+  summarize(med_est=median(marg),
+            high=quantile(marg,.95),
+            low=quantile(marg,.05)) %>% 
+  ggplot(aes(y=med_est,x=forcats::fct_rev(variable))) +
+  geom_pointrange(aes(ymin=low,ymax=high),position=position_dodge(width=.5),alpha=0.5) +
+  scale_color_viridis_d() +
+  theme_minimal() +
+  geom_hline(yintercept = 0,linetype=2) +
+  ylab(TeX("Value of Scale/Dispersion Parameter $\\phi$"),
+       caption="") +
+  theme(legend.position = "top") +
+  guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
+  facet_wrap(~group_list,scales="free",ncol=2) +
+  xlab("") +
+  coord_flip() 
 
 ```
 
@@ -1382,6 +1449,6 @@ This paper presented a new model for bounded continuous distributions with consi
 
 The primary problem this paper solves is to incorporate degenerate responses, or responses at 0 or 1, along with the beta distribution without sacrificing model parsimony. This is made possible by employing cutpoints as scaling intercepts that permit the 0 and 1 values to be jointly estimated with the beta regression. Compared to existing approaches, particularly zero-one-inflated beta regression (ZOIB), ordered beta regression is able to capture a unitary marginal effect of a given covariate on the outcome that is monotonic over the full response range. 
 
-For these reasons, I recommend ordered beta regression as a straightforward model to applied researches with survey scale data. The model can separately predict the probabilities of each of the outcome's components, both continuous and degenerate responses, but will do so in a way that still permits a single interpretation for the effect of the covariate on the outcome. Furthermore, the model's parsimony means that it is able to capture marginal effects at relatively lower cost in terms of data than other approaches.
+For these reasons, I recommend ordered beta regression as a straightforward model to applied researches with survey scale data. The model can separately predict the probabilities of each of the outcome's components, both continuous and degenerate responses, but will do so in a way that still permits a single interpretation for the effect of the covariate on the outcome. Furthermore, the model's parsimony means that it is able to capture marginal effects at relatively lower cost in terms of data collection than other approaches.
 
 # References
