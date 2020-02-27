@@ -493,7 +493,7 @@ Figure \@ref(fig:loaddata) reveals some of the very common issues with these sor
 
 mat_data <- rbind(X_degen,X_prop)
 
-all_vars_ord_phi <- lapply(1:ncol(mat_data),function(c) {
+all_vars_ord_phi <- parallel::mclapply(1:ncol(mat_data),function(c) {
   
   if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
     pred_data_high <- mat_data
@@ -530,13 +530,13 @@ all_vars_ord_phi <- lapply(1:ncol(mat_data),function(c) {
   },c)
   
   tibble(marg=margin_ord,variable=colnames(mat_data)[c])
-}) %>% bind_rows
+},mc.cores=3) %>% bind_rows
   
 # iterate over columns to get marginal effects for regression without phi reg
   
 mat_data_miss <- rbind(X_degen_miss,X_prop_miss)
 
-all_vars_ord <- lapply(1:ncol(mat_data),function(c) {
+all_vars_ord <- parallel::mclapply(1:ncol(mat_data),function(c) {
 
   if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
     pred_data_high <- mat_data
@@ -573,7 +573,7 @@ all_vars_ord <- lapply(1:ncol(mat_data),function(c) {
   },c)
 
   tibble(marg=margin_ord,variable=colnames(mat_data)[c])
-}) %>% bind_rows
+},mc.cores=3) %>% bind_rows
 
 ```
 
@@ -625,7 +625,7 @@ out_lm <- as.matrix(pew_fit_lm)
   
   mat_data <- x
 
-all_vars_zoib <- lapply(1:ncol(mat_data),function(c,coef_a,coef_m,coef_g,alpha) {
+all_vars_zoib <- parallel::mclapply(1:ncol(mat_data),function(c,coef_a,coef_m,coef_g,alpha) {
   
   if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
     pred_data_high <- mat_data
@@ -670,7 +670,7 @@ all_vars_zoib <- lapply(1:ncol(mat_data),function(c,coef_a,coef_m,coef_g,alpha) 
   },c)
   
   tibble(marg=margin_ord,variable=colnames(mat_data)[c])
-},coef_m=X_beta_zoib,coef_a,coef_g,alpha) %>% bind_rows
+},coef_m=X_beta_zoib,coef_a,coef_g,alpha,mc.cores=3) %>% bind_rows
   
 ```
 
@@ -904,7 +904,7 @@ By comparison, ordered beta and ZOIB fit more of the distribution (the thick blu
 
 For OLS, which is defined over all real numbers, the value of 0.5 is not intrinsically different than other numbers. However, given that this is slider scale/feeling thermometer data, a value of 0.5 is quite different from a value of 0 or a value of 1. Substantively, the midpoint of the scale implies uncertainty: the respondent does not have pronounced views on the subject. For beta-related distributions, this uncertainty is reflected in the shape of the posterior such that it is unlikely that a pronounced mode at 0.5 will re-produce itself. Instead, the beta distribution provides a tighter fit to values that contain more information about respondent views on the $(0,0.49)$ and $(0.51,1)$ intervals. 
 
-It is possible to capture the pronounced mode at 0.5 using ordered beta regression by adding additional ordered cutpoints. I do not do so here as more precisely modeling this mode is unlikely to affect the substantive results in the model. In the appendix I consider a model with additional cutpoints that can reproduce the mode but does not seem to have any other notable differences other than slightly lower predictive validity. In all, the visual analysis provides yet another reason to reject OLS as a suitable model for this type of data as it will down-weight values at the extremes, which contain a lot of information about respondent preferences, in favor of values in the middle which contain relatively little information about respondent preferences. As can be seen, absent this one mode, both ordered beta regression and ZOIB provide reasonable coverage of the full empirical cumulative density of the posterior relative to the observed data.
+It is possible to capture the pronounced mode at 0.5 using ordered beta regression by adding additional ordered cutpoints. I do not do so here as more precisely modeling this mode is unlikely to affect the substantive results in the model given that a value of 0.5 communicates little information about respondents' views; as such, additional cutpoints would result in additional complexity with little additional information gain. In all, the visual analysis provides yet another reason to reject OLS as a suitable model for this type of data as it will down-weight values at the extremes, which contain a lot of information about respondent preferences, in favor of values in the middle which contain relatively little information about respondent preferences. As can be seen, absent this one mode, both ordered beta regression and ZOIB provide reasonable coverage of the full empirical cumulative density of the posterior relative to the observed data.
 
 
 ```{r postpred,fig.cap="Comparison of Sample to Posterior Empirical Cumulative Distribution for Models"}
@@ -1044,11 +1044,11 @@ recode_marg <- bind_rows(list(OLS=gather(as_tibble(out_lm),key="variable",value=
 
 ```
 
-This difference is remarkable given the previous findings showing that ordered beta regression and the ZOIB are similar in many respects, although ordered beta regression tends to be a more efficient estimator. In Figure \@ref(fig:combinecoef) we can see evidence of the issue raised earlier in the article about the ZOIB modeling 0s, 1s and continous values as **separate** processes. Even though the ZOIB provides a generally similar fit to the data as ordered beta regression, the interpretation assigned to covariate effects is not generally the same. In this case, the difference appears to arise from how the two models interpret respondent decision-making by re-weighting the importance of degenerate versus continuous responses.
+This difference is remarkable given the previous findings showing that ordered beta regression and the ZOIB are similar in many respects, although ordered beta regression tends to be a more efficient estimator. In Figure \@ref(fig:combinecoef) we can see evidence of the issue raised earlier in the article about the ZOIB modeling 0s, 1s and continous values as *separate* processes. Even though the ZOIB provides a generally similar fit to the data as ordered beta regression, the interpretation assigned to covariate effects is not generally the same. In this case, the difference appears to arise from how the two models interpret respondent decision-making by re-weighting the importance of degenerate versus continuous responses.
 
 Table \@ref(tab:extreme) shows the separate calculations of average thermometer rankings for continuous and degenerate responses by education and income, along with the proportion of values in each category that contain degenerate responses. Comparing first for average thermometer values, there does appear to be evidence that the unadjusted scores are higher for less educated and poorer respondents. Comparing continuous and degenerate responses in the middle two columns, the difference between categories is much more pronounced for degenerate responses than for continous responses. In particular for income, poorer respondents are much more likely to give higher scores among degenerate values (an average of 0.81) to professors while wealthier respondents give a dispiriting 0.31. For the continuous values, on the other hand, there are small to weak differences between poorer and richer respondents.
 
-These comparisons can help us understand the divergent marginal effects reported in Figure \@ref(fig:combinecoef). Beta regression with only continuous values shows no differentiation among education categories, while for income categories it shows an **opposite** relationship, with richer respondents holding stronger views for college professors. OLS, which also downplays values at the extremes, is close to the continuous beta distribution in its interpretation of these effects. The transformed beta regression is close to the continuous distributions for education, and quite confusingly, close to the ordered beta regression for income (as has probably become clear by this point, this transformation has potentially severe consequences on correctly modeling the response).
+These comparisons can help us understand the divergent marginal effects reported in Figure \@ref(fig:combinecoef). Beta regression with only continuous values shows no differentiation among education categories, while for income categories it shows an *opposite* relationship, with richer respondents holding stronger views for college professors. OLS, which also downplays values at the extremes, is close to the continuous beta distribution in its interpretation of these effects. The transformed beta regression is close to the continuous distributions for education, and quite confusingly, close to the ordered beta regression for income (as has probably become clear by this point, this transformation has potentially severe consequences on correctly modeling the response).
 
 While it is intuitive to understand why OLS and the continuous beta regression would diverge from ordered beta regression, I still have not explained with the ZOIB does so as well. The answer can be seen in the right-most column in Table \@ref(tab:extreme). Not only do poorer and less educated respondents give higher scores among the degenerate responses for college professors, but they are also more likely to give degenerate responses as a proportion of their total responses. As a result, the ZOIB model *downweights* the degenerate responses for the poorer/less educated respondents while it *upweights* continuous responses for the richer/more educated respondents.
 
@@ -1101,27 +1101,37 @@ One final note on the bottom row of Figure \@ref(fig:zoibcoef) are the fixed pro
 
 ```{r zoibcoef,fig.cap="Comparison of Intermediate Probabilities for Ordered Beta Regression and ZOIB",fig.height=9,fig.width=6}
 
+# facet_labels <- c(TeX("$Pr(y=0)$",output="character"),
+#                       TeX("$Pr(y=1)$",output="character"),
+#                       TeX("$Pr(y>0 \\bigcap y<1)$",output="character"),
+#                       TeX("Beta($y$)",output="character"))
+
+facet_labels <- c("Pr(y=0)",
+                      "Pr(y=1)",
+                      "Pr(y>0) \u2229 Pr(y<1)",
+                      "Beta(y)")
+
 # need to check all the zoib coefs
 
 # drop intercept
-mat_data_small <- mat_data[,-1]
 
-zoib_all <- lapply(1:ncol(mat_data_small),function(c,coef_a,coef_m,coef_g,alpha) {
+
+zoib_all_prob <- parallel::mclapply(1:ncol(x),function(c,coef_a,coef_m,coef_g,alpha) {
   
-  if(all(mat_data_small[!is.na(mat_data_small[,c]),c] %in% c(0,1))) {
-    pred_data_high <- mat_data_small
+  if(all(x[!is.na(x[,c]),c] %in% c(0,1))) {
+    pred_data_high <- x
     
     pred_data_high[,c] <- 0
     
-    pred_data_low <- mat_data_small
+    pred_data_low <- x
     
     pred_data_low[,c] <- 1
   } else {
-    pred_data_high <- mat_data_small
+    pred_data_high <- x
     
     pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
     
-    pred_data_low <- mat_data_small
+    pred_data_low <- x
     
     pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
   }
@@ -1156,18 +1166,15 @@ zoib_all <- lapply(1:ncol(mat_data_small),function(c,coef_a,coef_m,coef_g,alpha)
              mean(marg_eff_1),
              mean(marg_middle),
              mean(marg_eta)),
-             estimate=c(TeX("$Pr(y=0)$",output="text"),
-                        TeX("$Pr(y=1)$",output="text"),
-                        TeX("$Pr(y>0 \\cap y<1)$",output="text",
-                        TeX("Beta($y$)",output="text"))))
+             estimate=facet_labels)
   },c) %>% bind_rows
   
 
-  margin_ord$variable <- colnames(mat_data_small)[c]
+  margin_ord$variable <- colnames(x)[c]
   
   margin_ord
   
-},coef_m=X_beta_zoib,coef_a,coef_g,alpha) %>% bind_rows
+},coef_m=X_beta_zoib,coef_a=coef_a,coef_g=coef_g,alpha=alpha,mc.cores=3) %>% bind_rows
 
 # repeat for regular ordered regression
 
@@ -1175,7 +1182,7 @@ zoib_all <- lapply(1:ncol(mat_data_small),function(c,coef_a,coef_m,coef_g,alpha)
   
 mat_data <- rbind(X_degen,X_prop)
 
-ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
+ord_reg_all_prob <- parallel::mclapply(1:ncol(mat_data),function(c) {
   
   if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
     pred_data_high <- mat_data
@@ -1196,8 +1203,8 @@ ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
   }
   
   
-  
   margin_ord <- lapply(1:nrow(X_beta_ord), function(i,this_col) {
+
     y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
                           X=pred_data_low,
                           X_beta=X_beta_ord[i,],
@@ -1217,20 +1224,17 @@ ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
              mean(marg_eff_1),
              mean(marg_middle),
              mean(marg_eta)),
-             estimate=c(TeX("$Pr(y=0)$",output="text"),
-                        TeX("$Pr(y=1)$",output="text"),
-                        TeX("$Pr(y>0 \\cap y<1)$",output="text",
-                        TeX("Beta($y$)",output="text"))))
+             estimate=facet_labels)
   },c) %>% bind_rows()
   
   margin_ord$variable <- colnames(mat_data)[c]
   
   margin_ord
   
-}) %>% bind_rows
+},mc.cores=3) %>% bind_rows
 
- bind_rows(list(`ZOIB`=zoib_all,
-                `Ordered Beta`=ord_reg_all),.id="model") %>% 
+compare_prob <-  bind_rows(list(`ZOIB`=zoib_all_prob,
+                `Ordered Beta`=ord_reg_all_prob),.id="model") %>% 
    mutate(variable=recode(variable,
                          `raceBlack non-Hispanic`="Black",
          `raceHispanic`="Hispanic",
@@ -1289,12 +1293,12 @@ ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
                                            "$100k - $150k",
                                            "> $150k")),
          group_list=forcats::fct_collapse(variable,
-                                          `Education\nBaseline=Less Than H.S.`=c("Some College",
+                                          `Education\nBaseline=Less~Than~H.S.`=c("Some College",
                                            "H.S. Graduate",
                                            "Associate's",
                                            "College Grad",
                                            "Postgraduate"),
-                                          `Income\nBaseline= <$10k`=c("$10k - $20k",
+                                          `Income\nBaseline=phantom(x)~<$10k`=c("$10k - $20k",
                                            "$20k - $30k",
                                            "$30k - $40k",
                                            "$40k - $50k",
@@ -1302,12 +1306,14 @@ ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
                                            "$75k - $100k",
                                            "$100k - $150k",
                                            "> $150k"))) %>% 
-   filter(group_list %in% c("Education\nBaseline=Less Than H.S.",
-                            "Income\nBaseline= <$10k")) %>% 
+   filter(group_list %in% c("Education\nBaseline=Less~Than~H.S.",
+                            "Income\nBaseline=~<$10k")) %>% 
     group_by(model,variable,estimate,group_list) %>% 
   summarize(med_est=median(marg),
             high=quantile(marg,.95),
-            low=quantile(marg,.05)) %>% 
+            low=quantile(marg,.05)) 
+
+compare_prob %>% 
   ggplot(aes(y=med_est,x=forcats::fct_rev(variable))) +
   geom_pointrange(aes(ymin=low,ymax=high,colour=model,shape=model),position=position_dodge(width=.5)) +
   scale_color_viridis_d() +
@@ -1316,7 +1322,7 @@ ord_reg_all <- lapply(1:ncol(mat_data),function(c) {
   ylab("Thermometer Scores") +
   theme(legend.position = "top") +
   guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
-  facet_wrap(~estimate+group_list,scales="free",ncol=2,labeller = label_parsed) +
+  facet_wrap(~estimate+group_list,scales="free",ncol=2) +
   xlab("") +
   coord_flip()
 
@@ -1424,8 +1430,7 @@ recode_marg_phi <- all_vars_ord_phi %>%
   scale_color_viridis_d() +
   theme_minimal() +
   geom_hline(yintercept = 0,linetype=2) +
-  ylab(TeX("Value of Scale/Dispersion Parameter $\\phi$"),
-       caption="") +
+  ylab(TeX("Value of Scale/Dispersion Parameter $\\phi$")) +
   theme(legend.position = "top") +
   guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
   facet_wrap(~group_list,scales="free",ncol=2) +
