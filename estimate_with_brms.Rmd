@@ -84,7 +84,7 @@ model_data <- select(pew,therm,age="F_AGECAT_FINAL",
 
 The completed dataset has `r nrow(model_data)` observations. 
 
-To model this data in `brms`, I have to define some code using the `custom_family` function to create a new distribution, `ord_beta_reg`. You need to run the following code in R before trying to use the custom family as it defines the log-likelihood and the priors (you can of course add additional priors of your own). You can access this code as an R script `define_ord_beta_reg.R` in the [Github repository containing this Rmarkdown file](https://github.com/saudiwin/ordbetareg).
+To model this data in `brms`, I have to define some code using the `custom_family` function to create a new distribution, `ord_beta_reg`. You need to run the following code in R before trying to use the custom family as it defines the log-likelihood and the priors (you can of course add additional priors of your own). You can access this code as an R script `define_ord_betareg.R` in the [Github repository containing this Rmarkdown file](https://github.com/saudiwin/ordbetareg).
 
 ```{r customfam}
 
