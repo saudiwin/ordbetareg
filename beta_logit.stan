@@ -38,7 +38,7 @@ model {
   
   // vague priors
   X_beta ~ normal(0,5);
-  kappa ~ exponential(1);
+  kappa ~ exponential(.1);
   cutpoints[2] - cutpoints[1] ~ normal(0,3);
   
   // need separate counters for logit (0/1) and beta regression

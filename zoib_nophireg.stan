@@ -50,7 +50,7 @@ model {
   coef_g ~ normal(0, 3);
   coef_m ~ normal(0, 3);
   //coef_p ~ normal(0, 3);
-  phi ~ exponential(1);
+  phi ~ exponential(.1);
   alpha ~ normal(0,3);
   
   is_discrete ~ bernoulli_logit(psi);
