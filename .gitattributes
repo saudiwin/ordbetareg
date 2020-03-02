@@ -1,1 +1,2 @@
-*.html *.tex linguist-vendored
+*.html linguist-vendored
+*.tex linguist-vendored
