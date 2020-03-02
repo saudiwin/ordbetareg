@@ -19,9 +19,13 @@ set.seed(71520177)
 ```
 
 
+# Overview
+
 This notebook contains instructions for running the ordered beta regression model in the R package `brms`, a front-end to the Stan Hamiltonian Markov Chain Monte Carlo sampler. The ordered beta regression model is designed explicitly for slider scale/visual analog scale data of the type you will often find in online surveys among other areas. I refer you to a paper on the model if you are not familiar with it: https://osf.io/preprints/socarxiv/2sx6y/.
 
-The ordered beta regression model is not natively supported in `brms` and so instead I define it here using the [custom response option](https://cran.r-project.org/web/packages/brms/vignettes/brms_customfamilies.html) of `brms`. 
+The ordered beta regression model is not natively supported in `brms` and so instead I define it here using the [custom response option](https://cran.r-project.org/web/packages/brms/vignettes/brms_customfamilies.html) of `brms`.
+
+# Data Preparation
 
 First, I load data from the Pew Forum that asks a question about respondents' views towards college professors (for a more complete explication, see the paper referenced above).
 
@@ -83,6 +87,8 @@ model_data <- select(pew,therm,age="F_AGECAT_FINAL",
 ```
 
 The completed dataset has `r nrow(model_data)` observations. 
+
+# Define Custom Family
 
 To model this data in `brms`, I have to define some code using the `custom_family` function to create a new distribution, `ord_beta_reg`. You need to run the following code in R before trying to use the custom family as it defines the log-likelihood and the priors (you can of course add additional priors of your own). You can access this code as an R script `define_ord_betareg.R` in the [Github repository containing this Rmarkdown file](https://github.com/saudiwin/ordbetareg).
 
@@ -207,6 +213,8 @@ priors <- set_prior("normal(0,5)",class="b") +
 
 ```
 
+# Run In BRMS
+
 Given these new functions, we can then run a `brms` model as usual. The one catch is that we need to include the `priors` object in the `priors` argument and the `stanvars` object in the `stanvars` argument of the function, which comes from the code block above. The second and *very important* item is that the model formula must start with 0 for the independent (right-hand side) variables. This is to ensure no multi-collinearity between the ordinal cutpoitns in the model and the intercept.
 
 Other than that, everything is the same and you can use any cool `brms` features. To demonstrate some of these, I will model education and income as ordinal predictors by using the `mo()` function. By doing so, we can get a single effect for education and income instead of having to use dummies for separate education/income categories. As a result, I can include an interaction between the two variables to see if wealthier more educated people have better views towards college professors than poorer better educated people. Finally, I include varying (random) census region intercepts:
@@ -223,6 +231,8 @@ brms_fit <- brm(therm ~ 0 + mo(education)*mo(income) + (1|region), data=model_da
 ```
 
 The running time for this model, which has pretty complicated predictors, is about 7 minutes. So the model is currently robust enough to handle datasets of reasonable size. Performance will improve if I can get the model into `brms` proper. The one divergent transition references aboved is due to the well-known funnel problem of the variance of the random intercepts, and I will ignore it for the purposes of this vignette.
+
+# Post-Estimation
 
 The first thing we can do is extract the model cutpoints and overlay them on the empirical distribution to see how the model is dividing the outcome into discrete-ish categories. We have to do transformation of the cutpoints using the inverse logit function in R (`plogis`) to get back values in the scale of the response, and I have to exponentiate and add the first cutpoint to get the correct value for the second cutpoint:
 
@@ -266,7 +276,7 @@ plot(brms_fit,ask=F,theme=theme(panel.grid=element_blank(),
                                 panel.background = element_blank()))
 ```
 
-
+# Marginal Effects
 
 We can also look at marginal effects, or the average change in the outcome given a unit change in one of the variables, by using the `conditional_effects` function in `brms`. This function plots the effect of `income` and `education` separately and then the interaction of the two.
 
