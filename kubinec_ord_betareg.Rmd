@@ -1,15 +1,16 @@
 ---
 title: "Ordered Beta Regression: A Parsimonious, Well-Fitting Model for Survey Sliders and Visual Analog Scales"
 bibliography: BibTexDatabase.bib
+date: March 1st, 2020
 output: 
   bookdown::pdf_document2:
       keep_tex: true
       toc: false
       includes:
         in_header: preamble.tex
-author: 
-  - Robert Kubinec
-  - New York University Abu Dhabi
+author: |
+  | Robert Kubinec
+  | New York University Abu Dhabi
 abstract: "I propose a new model, ordered beta regression, for data collected from human subjects using slider scales/visual analog scales with lower and upper bounds. This model employs the cutpoint technique popularized by ordered logit to simultaneously estimate the probability that the outcome is at the upper bound, lower bound, or any continuous number in between. This model is contrasted with existing approaches, including ordinary least squares (OLS) regression and the zero-one-inflated beta regression (ZOIB) model. Simulation evidence shows that the proposed model, relative to existing approaches, estimates effects with more accuracy while capturing the full uncertainty in the distribution. Furthermore, an analysis of data on U.S. public opinion towards college professors reveals that the proposed model is better able to combine variation across continuous and degenerate responses. The model can be fit with the R package `brms`.^[For a reproducible version of this paper, please see the Github repository https://github.com/saudiwin/ordbetareg. To see how to fit the model with R package `brms`, which includes a full range of regression model options including multilevel/hierarchical models, see the vignette available at https://htmlpreview.github.io/?https://github.com/saudiwin/ordbetareg/blob/master/estimate_with_brms.html.]"
 ---
 
@@ -305,6 +306,7 @@ all_sim %>%
   stat_smooth(aes(colour=model,linetype=model),method="gam",formula = y ~ s(x, bs = "cs")) + 
   ylab(TeX("$\\hat{elpd}_{psis_loo}$")) +
   xlab("Sample Kurtosis") +
+  labs(caption="Dotted line indicates Gaussian kurtosis of 3.") +
   guides(color=guide_legend(title=""),
          linetype=guide_legend(title="")) +
   theme(legend.position = "top",
@@ -942,7 +944,7 @@ lm_dens + ord_dens + zoib_dens + beta_trans_dens +
 
 Because I do not have access to the true underlying data generative process, I compare estimated marginal effects from each model. These are reported for the different predictors in the model in Figure \@ref(fig:combinecoef). These results are intriguing both for their similarities and differences. For some covariates, such as age, sex and political ideology, the models return almost identical results (even for the beta regression on continuous values). However, for other variables, the models diverge quite significantly. The most pronounced differences are for education and income where the effects for ordered beta regression and the ZOIB are noticeably far apart, and sometimes even of different signs.
 
-```{r combinecoef,fig.cap="Estimated Marginal Effects from Regression of Feeling Thermometer Ratings Towards College Professors",fig.width=6,fig.height=9}
+```{r combinecoef,fig.cap="Estimated Marginal Effects from Regression of Feeling Thermometer Ratings Towards College Professors",fig.width=6,fig.height=8.5}
 
 recode_marg <- bind_rows(list(OLS=gather(as_tibble(out_lm),key="variable",value="marg"),
                          `Ordered\nBeta`=all_vars_ord,
@@ -1111,7 +1113,7 @@ This effect decomposition is very puzzling because the subjects are individual r
 
 One final note on the bottom row of Figure \@ref(fig:zoibcoef) are the fixed probabilities for $Pr(y_i>0 \cap Pr(y_i<1))$. These fixed values are due to the fact that the cutpoints are fixed for the entire sample. It is possible to allow the cutpoints to vary across groups, or even to parameterize the cutpoints with covariates to permit more subtle gradations. However, as the analysis with the ZOIB model shows, it is important to know theoretically why this flexibility is required, as it will affect the interpretation of the underlying estimates. The employment of cutpoints has the advantage that any additional flexibility can be incorporated as-needed rather than allowing for completely independent processes as with the ZOIB.
 
-```{r zoibcoef,fig.cap="Comparison of Intermediate Probabilities for Ordered Beta Regression and ZOIB",fig.height=9,fig.width=6}
+```{r zoibcoef,fig.cap="Comparison of Intermediate Probabilities for Ordered Beta Regression and ZOIB",fig.height=8.5,fig.width=6}
 
 # facet_labels <- c(TeX("$Pr(y=0)$",output="character"),
 #                       TeX("$Pr(y=1)$",output="character"),

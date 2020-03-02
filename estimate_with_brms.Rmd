@@ -19,7 +19,7 @@ set.seed(71520177)
 ```
 
 
-This notebook contains instructions for running the ordered beta regression model in the R package `brms`, a front-end to the Stan Hamiltonian Markov Chain Monte Carlo sampler. The ordered beta regression model is designed explicitly for slider scale/visual analog scale data of the type you will often find in online surveys among other areas. I refer you to a paper on the model if you are not familiar with it: .
+This notebook contains instructions for running the ordered beta regression model in the R package `brms`, a front-end to the Stan Hamiltonian Markov Chain Monte Carlo sampler. The ordered beta regression model is designed explicitly for slider scale/visual analog scale data of the type you will often find in online surveys among other areas. I refer you to a paper on the model if you are not familiar with it: https://osf.io/preprints/socarxiv/2sx6y/.
 
 The ordered beta regression model is not natively supported in `brms` and so instead I define it here using the [custom response option](https://cran.r-project.org/web/packages/brms/vignettes/brms_customfamilies.html) of `brms`. 
 
