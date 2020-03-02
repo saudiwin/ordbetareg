@@ -932,7 +932,7 @@ ord_dens <- ppc_ecdf_overlay(c(to_bl$outcome_degen,to_bl$outcome_prop),yrep_ord[
   ggtitle("Ordered Beta")
 zoib_dens <- ppc_ecdf_overlay(as.numeric(model_data$therm),yrep_zoib[sample_rows,]) +
   ggtitle("ZOIB") + 
-  xlab("Empirical Cumulative Density")
+  ylab("Empirical Cumulative Density")
 beta_trans_dens <- ppc_ecdf_overlay(as.numeric(model_data$therm),yrep_beta_trans[sample_rows,]) +
   ggtitle("Transformed Beta")
 
