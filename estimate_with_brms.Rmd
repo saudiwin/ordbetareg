@@ -209,19 +209,25 @@ log_lik_ord_beta_reg <- function(i, draws) {
 # scale
 
 priors <- set_prior("normal(0,5)",class="b") + 
-          prior_string("target += normal_lpdf((cutzero + exp(cutone)) - cutzero|0,3) + cutone",check=F)
+  prior(constant(0),class="b",coef="Intercept") +
+  prior_string("target += normal_lpdf((cutzero + exp(cutone)) - cutzero|0,3) + cutone",check=F) +
+  set_prior("exponential(.1)",class="phi")
+
+priors_phireg <- set_prior("normal(0,5)",class="b") + 
+  prior(constant(0),class="b",coef="Intercept") +
+  prior_string("target += normal_lpdf((cutzero + exp(cutone)) - cutzero|0,3) + cutone",check=F)
 
 ```
 
 # Run In BRMS
 
-Given these new functions, we can then run a `brms` model as usual. The one catch is that we need to include the `priors` object in the `priors` argument and the `stanvars` object in the `stanvars` argument of the function, which comes from the code block above. The second and *very important* item is that the model formula must start with 0 for the independent (right-hand side) variables. This is to ensure no multi-collinearity between the ordinal cutpoitns in the model and the intercept.
+Given these new functions, we can then run a `brms` model as usual. The one catch is that we need to include the `priors` object in the `priors` argument and the `stanvars` object in the `stanvars` argument of the function, which comes from the code block above. The second and *very important* item is that the model formula must start with `0 + Intercept` for the independent (right-hand side) variables. You can add anything you want after that first term. This is to ensure no multi-collinearity between the ordinal cutpoints in the model and the intercept.
 
 Other than that, everything is the same and you can use any cool `brms` features. To demonstrate some of these, I will model education and income as ordinal predictors by using the `mo()` function. By doing so, we can get a single effect for education and income instead of having to use dummies for separate education/income categories. As a result, I can include an interaction between the two variables to see if wealthier more educated people have better views towards college professors than poorer better educated people. Finally, I include varying (random) census region intercepts:
 
 ```{r run_brms}
 
-brms_fit <- brm(therm ~ 0 + mo(education)*mo(income) + (1|region), data=model_data,
+brms_fit <- brm(therm ~ 0 + Intercept + mo(education)*mo(income) + (1|region), data=model_data,
                 family=ord_beta_reg,
                 cores=2,chains=2,
                 prior = priors,
@@ -230,7 +236,7 @@ brms_fit <- brm(therm ~ 0 + mo(education)*mo(income) + (1|region), data=model_da
 
 ```
 
-The running time for this model, which has pretty complicated predictors, is about 7 minutes. So the model is currently robust enough to handle datasets of reasonable size. Performance will improve if I can get the model into `brms` proper. The one divergent transition references aboved is due to the well-known funnel problem of the variance of the random intercepts, and I will ignore it for the purposes of this vignette.
+The running time for this model, which has pretty complicated predictors, is about 7 minutes. So the model is currently robust enough to handle datasets of reasonable size. Performance will improve if I can get the model into `brms` proper. The one divergent transition referenced above is due to the well-known funnel problem of the variance of the random intercepts, and I will ignore it for the purposes of this vignette.
 
 # Post-Estimation
 
@@ -265,7 +271,7 @@ We can plot the full predictive distribution relative to the original outcome:
 
 ```{r post_predict}
 
-pp_check(brms_fit)
+pp_check(brms_fit) + theme_minimal()
 
 ```
 
@@ -289,3 +295,52 @@ plot(conditional_effects(brms_fit),theme=theme(axis.text.x = element_text(angle=
 ```
 
 Broadly speaking, these plots show that richer people have less favorable views on college professors, less educated people have less favorable views towards college professors, and the effect is even stronger if we consider the interaction. Wealthier less educated people are dramatically more likely to have less favorable views towards college professors than poor people with a postgraduate education. The difference is equivalent to 0.4, or 40 points on the original 0 to 100 scale.
+
+# Understanding Clustering/Polarization of Respondents
+
+As I explain in the paper, one of the main advantages of using a Beta regression model is its ability to model the dispersion among respondents not just in terms of variance (i.e. heteroskedasticity) but also the shape of dispersion, whether it is U or inverted-U shaped. Conceptually, a U shape would imply that respondents are bipolar, moving towards the extremes. An inverted-U shape would imply that respondents tend to cluster around a central value. We can predict these responses conditionally in the sample by adding predictors for `phi`, the scale/dispersion parameter in the Beta distribution. Higher values of `phi` imply a uni-modal distribution clustered around a central value, with increasing `phi` implying more clustering. Lower values of `phi` imply a bi-modal distribution with values at the extremes. Notably, these effects are calculated independently of the expected value, or mean, of the distribution, so values of `phi` will produce different shapes depending on the average value. 
+
+The one change we need to make to fit this model is to add a formula predicting `phi` in the code below (this formula does not need the `0 + Intercept` syntax of the main model). We wrap both formulas in the `bf` function to indicate they are both distributional parameters. We also need to change the prior argument to `priors_phireg` as the priors of the model have changed as a result of adding predictors. For this model, we will put in an interaction between age and sex to see if younger/older men/women tend to have clustered or more heterogenous views on college professors. To make the model run a bit faster, we drop the `mo` terms around `education` and `income` so that they are evaluated as dummy variables.
+
+
+```{r run_brms_phi}
+
+brms_fit_phireg <- brm(bf(therm ~ 0 + Intercept + education + income, 
+                phi ~ age*sex),
+                data=model_data,
+                family=ord_beta_reg,
+                cores=2,chains=2,
+                prior = priors_phireg,
+                refresh=100,
+                stanvars=stanvars)
+
+```
+
+We cannot use the `conditional_effects` option to plot because the dispersion parameter `phi` by definition does not affect the expected outcome (i.e., the average). Instead, we can uses the regular `plot` function to visualize the parameters:
+
+```{r plot_phi}
+
+plot(brms_fit_phireg,pars = "phi",fixed = F,ask=F,combo=c("intervals","hist"))
+
+```
+
+There is weak to moderate evidence in this plot that women have more homogenous views and that older women have more homogenous views than younger women. However, there is substantial uncertainty in this estimate and the estimate itself is not very large. We are using the log link for `phi`, so to get the value of the effect on `phi`, we can exponentiate the coefficient, i.e. `exp(0.1)=``r round(exp(0.1),2)`. We can compare what the distributions look like by plotting histograms of simulated outcomes using the Beta distribution and the average response in our data, which is `r round(mean(model_data$therm,na.rm=T),2)`. We will examine a 1-unit change in `phi` (much larger than our estimated effects) from 2 to 3 by using the average response for `mu` and plotting the density of both distributions:
+
+```{r plot_phi_sim}
+
+# parameterization of beta distribution in terms of mu/phi (mean/dispersion)
+rbeta_mean <- function(N,mu,phi) {
+  rbeta(N,mu*phi,(1-mu)*phi)
+}
+
+tibble(phi_small=rbeta_mean(10000,mean(model_data$therm,na.rm=T),2),
+       phi_big=rbeta_mean(10000,mean(model_data$therm,na.rm=T),3)) %>% 
+  gather("phi_type","simulated_value") %>% 
+  ggplot(aes(x=simulated_value)) +
+  geom_density(alpha=0.5,aes(fill=phi_type)) +
+  theme(panel.background = element_blank(),
+        panel.grid=element_blank())
+
+```
+
+We can see that the `phi_big` distribution is more clustered around a central value while `phi_small` shows more movement towards the extremes of the distribution. However, the movement is modest, as the value of the coefficient suggests.

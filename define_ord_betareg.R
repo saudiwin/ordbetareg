@@ -117,4 +117,10 @@ log_lik_ord_beta_reg <- function(i, draws) {
 # scale
 
 priors <- set_prior("normal(0,5)",class="b") + 
+  prior(constant(0),class="b",coef="Intercept") +
+  prior_string("target += normal_lpdf((cutzero + exp(cutone)) - cutzero|0,3) + cutone",check=F) +
+  set_prior("exponential(.1)",class="phi")
+
+priors_phireg <- set_prior("normal(0,5)",class="b") + 
+  prior(constant(0),class="b",coef="Intercept") +
   prior_string("target += normal_lpdf((cutzero + exp(cutone)) - cutzero|0,3) + cutone",check=F)
