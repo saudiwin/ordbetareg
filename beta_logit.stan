@@ -30,7 +30,9 @@ transformed parameters {
   vector[N_prop] calc_prop;
   
   // drop the intercepts so everything is relative to the cutpoints
-  calc_degen = covar_degen*X_beta;
+  if(N_degen>0) {
+    calc_degen = covar_degen*X_beta;
+  }
   calc_prop = covar_prop*X_beta;
   
 }
@@ -42,8 +44,8 @@ model {
   cutpoints[2] - cutpoints[1] ~ normal(0,3);
   
   // need separate counters for logit (0/1) and beta regression
-  
-  for(n in 1:N_degen) {
+  if(N_degen>0) {
+    for(n in 1:N_degen) {
     if(outcome_degen[n]==0) {
       // Pr(Y==0)
       target += log1m_inv_logit(calc_degen[n] - cutpoints[1]);
@@ -51,7 +53,9 @@ model {
       //Pr(Y==1)
       target += log_inv_logit(calc_degen[n] - cutpoints[2]);
     }
+    }
   }
+  
   
   for(n in 1:N_prop) {
     // Pr(Y in (0,1))
@@ -92,9 +96,8 @@ generated quantities {
         // did not occur in original data but could re-occur probabilistically
         regen_all[i] = beta_proportion_rng(inv_logit(covar_degen[indices_degen[i],]*X_beta),kappa);
       }
-      
-  }
-  
+     }
+    }
   if(N_pred_prop>0) {
         // now do originally proportional outcomes
       // can be re-generated as 0s or 1s
@@ -120,7 +123,6 @@ generated quantities {
         
       } 
       }
-    }
   }
   
 }
