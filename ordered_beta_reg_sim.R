@@ -16,16 +16,17 @@ rstan_options("auto_write" = TRUE)
 
 beta_logit <- stan_model("beta_logit.stan")
 zoib_model <- stan_model("zoib_nophireg.stan")
+frac_mod <- stan_model("frac_logit.stan")
 
 # let's do some simulations
 
 N_rep <- 10000
 
-simul_data <- tibble(N=round(runif(N_rep,100,2000),0),
-                     X_beta=runif(N_rep,-2,2),
-                     phi=runif(N_rep,0.5,4),
-                     cutpoints1=runif(N_rep,-5,-1)) %>% 
-              mutate(cutpoints2=cutpoints1+runif(N_rep,0.5,5))
+simul_data <- tibble(N=round(runif(N_rep,100,4000),0),
+                     X_beta=runif(N_rep,-5,5),
+                     phi=runif(N_rep,0.5,30),
+                     cutpoints1=runif(N_rep,-10,-1)) %>% 
+  mutate(cutpoints2=cutpoints1+runif(N_rep,0.5,10))
 
 # we can also use it to calculate "true" marginal effect of X on Y using code from margins package
 # i.e., numerical differentiation
@@ -94,7 +95,8 @@ predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
 
 r_seeds <- c(6635,2216,8845,9936,3321)
 
-all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
+#all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
+all_simul_data <- lapply(1, function(i,simul_data=NULL,r_seeds=NULL) {
   this_data <- slice(simul_data,i)
   cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
   
@@ -226,9 +228,23 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   lm_fit <- stan_lm(formula = outcome~X,data=tibble(outcome=final_out,
                                                     r_seeds[5],
-                                                         X=X),chains=1,cores=1,iter=1000,prior=NULL)
+                                                    X=X),chains=1,cores=1,iter=1000,prior=NULL)
   
   yrep_lm <- posterior_predict(lm_fit,draws=100)
+  
+  # fit fractional logit
+  
+  frac_data <- list(y=final_out,
+                    x=x,
+                    k=ncol(x),
+                    run_gen=1,
+                    n=nrow(x))
+  
+  frac_fit <- sampling(frac_mod,data=frac_data,seed=r_seeds[1],
+                       chains=1,cores=1,iter=1000)
+  
+  
+  
   
   # now return the full data frame
   
@@ -237,6 +253,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   X_beta_reg <- as.matrix(betareg_fit,pars="X")
   X_beta_reg2 <- as.matrix(betareg_fit2,pars="X")
   X_beta_lm <- as.matrix(lm_fit,pars="X")
+  X_beta_frac <- as.matrix(frac_fit,pars="X_beta")
   
   # calculate rmse
   
@@ -245,6 +262,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   rmse_betareg <- sqrt(mean(apply(yrep_betareg,1,function(c) { (c - final_out)^2 })))
   rmse_betareg2 <- sqrt(mean(apply(yrep_betareg2,1,function(c) { (c - final_out[final_out>0 & final_out<1])^2 })))
   rmse_lm <- sqrt(mean(apply(yrep_lm,1,function(c) { (c - final_out)^2 })))
+  rmse_frac <- sqrt(mean(apply(as.matrix(frac_fit,"frac_rep"),1,function(c) { (c - final_out)^2 })))
   
   # calculate loo
   
@@ -253,15 +271,19 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   loo_betareg2 <- loo(betareg_fit2)
   loo_zoib <- try(loo(zoib_fit,"zoib_log"))
   loo_lm <- loo(lm_fit)
+  loo_frac <- try(loo(frac_fit,"frac_log"))
   
   if(any('try-error' %in% c(class(loo_ordbeta),
-                            class(loo_zoib)))) {
-    comp_loo <- matrix(rep(NA,6),ncol=2)
-    row.names(comp_loo) <- c("model3","model2","model1")
+                            class(loo_zoib),
+                            class(loo_frac)))) {
+    comp_loo <- matrix(rep(NA,8),ncol=2)
+    row.names(comp_loo) <- c("ord","zoib","frac")
     loo_ordbeta <- list(estimates=matrix(c(NA,NA),ncol=2))
     loo_zoib <- list(estimates=matrix(c(NA,NA),ncol=2))
+    loo_frac <- list(estimates=matrix(c(NA,NA),ncol=2))
   } else {
-    comp_loo <- loo_compare(loo_ordbeta,loo_zoib,loo_lm)
+    comp_loo <- loo_compare(list(ord=loo_ordbeta,zoib=loo_zoib,
+                                 lm=loo_lm,frac=loo_frac))
   }
   
   
@@ -272,12 +294,12 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   margin_ord <- sapply(1:nrow(X_beta_ord), function(i) {
     y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
-                        X=X_low,
-                        X_beta=X_beta_ord[i,])
-  
+                          X=X_low,
+                          X_beta=X_beta_ord[i,])
+    
     y1 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
-                            X=X_high,
-                            X_beta=X_beta_ord[i,])
+                          X=X_high,
+                          X_beta=X_beta_ord[i,])
     
     marg_eff <- (y1-y0)/(X_high-X_low)
     
@@ -336,79 +358,115 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
     mean(marg_eff)
   })
   
+  
+  # Fractional logit marg effects -------------------------------------------
+  
+  frac_int <- as.matrix(frac_fit,pars="alpha")
+  
+  margin_frac <- sapply(1:nrow(X_beta_frac), function(i) {
+    y0 <- plogis(frac_int + X_low*X_beta_frac[i,])
+    y1 <- plogis(frac_int + X_high*X_beta_frac[i,])
+    
+    marg_eff <- (y1-y0)/(X_high-X_low)
+    
+    mean(marg_eff)
+  })
+  
+  
+  
   this_data$marg_eff <- marg_eff
   this_data$true_kurt <- moments::kurtosis(final_out)
   
-  bind_cols(purrr::map_dfr(seq_len(5), ~this_data),bind_rows(tibble(model="Ordinal Beta Regression",
-                   med_est=mean(X_beta_ord),
-                   high=quantile(X_beta_ord,.95),
-                   low=quantile(X_beta_ord,.05),
-                   sd=sd(X_beta_ord),
-                   loo_val=loo_ordbeta$estimates[1,1],
-                   win_loo=which(row.names(comp_loo)=="model1"),
-                   win_loo_se=comp_loo[which(row.names(comp_loo)=="model1"),2],
-                   rmse=rmse_ord,
-                   kurt_est=mean(apply(as.matrix(fit_model,"regen_all"),1,moments::kurtosis)),
-                   marg_eff_est=mean(margin_ord),
-                   high_marg=quantile(margin_ord,.95),
-                   low_marg=quantile(margin_ord,.05),
-                   sd_marg=sd(margin_ord)),
-            tibble(model="ZOIB",
-                   med_est=mean(X_beta_zoib),
-                   high=quantile(X_beta_zoib,.95),
-                   low=quantile(X_beta_zoib,.05),
-                   sd=sd(X_beta_zoib),
-                   loo_val=loo_zoib$estimates[1,1],
-                   kurt_est=mean(apply(as.matrix(zoib_fit,"zoib_regen"),1,moments::kurtosis)),
-                   win_loo=which(row.names(comp_loo)=="model2"),
-                   win_loo_se=comp_loo[which(row.names(comp_loo)=="model2"),2],
-                   rmse=rmse_zoib,
-                   marg_eff_est=mean(margin_zoib),
-                   high_marg=quantile(margin_zoib,.95),
-                   low_marg=quantile(margin_zoib,.05),
-                   sd_marg=sd(margin_zoib)),
-            tibble(model="Beta Regression - Transformed",
-                   med_est=mean(X_beta_reg),
-                   high=quantile(X_beta_reg,.95),
-                   low=quantile(X_beta_reg,.05),
-                   sd=sd(X_beta_reg),
-                   loo_val=loo_betareg$estimates[1,1],
-                   rmse=rmse_betareg,
-                   kurt_est=mean(apply(yrep_betareg,1,moments::kurtosis)),
-                   marg_eff_est=mean(margin_betareg),
-                   high_marg=quantile(margin_betareg,.95),
-                   low_marg=quantile(margin_betareg,.05),
-                   sd_marg=sd(margin_betareg)),
-            tibble(model="Beta Regression - (0,1)",
-                   med_est=mean(X_beta_reg2),
-                   high=quantile(X_beta_reg2,.95),
-                   low=quantile(X_beta_reg2,.05),
-                   sd=sd(X_beta_reg2),
-                   loo_val=loo_betareg2$estimates[1,1],
-                   kurt_est=mean(apply(yrep_betareg2,1,moments::kurtosis)),
-                   rmse=rmse_betareg2,
-                    marg_eff_est=mean(margin_betareg2),
-                    high_marg=quantile(margin_betareg2,.95),
-                    low_marg=quantile(margin_betareg2,.05),
-                    sd_marg=sd(margin_betareg2)),
-            tibble(model="OLS",
-                   med_est=mean(X_beta_lm),
-                   high=quantile(X_beta_lm,.95),
-                   low=quantile(X_beta_lm,.05),
-                   sd=sd(X_beta_lm),
-                   kurt_est=mean(apply(yrep_lm,1,moments::kurtosis)),
-                   loo_val=loo_lm$estimates[1,1],
-                   win_loo=which(row.names(comp_loo)=="lm_fit"),
-                   win_loo_se=comp_loo[which(row.names(comp_loo)=="lm_fit"),2],
-                   rmse=rmse_lm,
-                   marg_eff_est=mean(X_beta_lm),
-                   high_marg=quantile(X_beta_lm,.95),
-                   low_marg=quantile(X_beta_lm,.05),
-                   sd_marg=sd(X_beta_lm))))
+  
+  
+  # Combine estimates -------------------------------------------------------
   
   
   
-},simul_data=simul_data,r_seeds=r_seeds,mc.cores=8)
+  bind_cols(purrr::map_dfr(seq_len(6), ~this_data),bind_rows(tibble(model="Ordinal Beta Regression",
+                                                                    med_est=mean(X_beta_ord),
+                                                                    high=quantile(X_beta_ord,.95),
+                                                                    low=quantile(X_beta_ord,.05),
+                                                                    sd=sd(X_beta_ord),
+                                                                    loo_val=loo_ordbeta$estimates[1,1],
+                                                                    win_loo=which(row.names(comp_loo)=="ord"),
+                                                                    win_loo_se=comp_loo[which(row.names(comp_loo)=="ord"),2],
+                                                                    rmse=rmse_ord,
+                                                                    kurt_est=mean(apply(as.matrix(fit_model,"regen_all"),1,moments::kurtosis)),
+                                                                    marg_eff_est=mean(margin_ord),
+                                                                    high_marg=quantile(margin_ord,.95),
+                                                                    low_marg=quantile(margin_ord,.05),
+                                                                    sd_marg=sd(margin_ord)),
+                                                             tibble(model="ZOIB",
+                                                                    med_est=mean(X_beta_zoib),
+                                                                    high=quantile(X_beta_zoib,.95),
+                                                                    low=quantile(X_beta_zoib,.05),
+                                                                    sd=sd(X_beta_zoib),
+                                                                    loo_val=loo_zoib$estimates[1,1],
+                                                                    kurt_est=mean(apply(as.matrix(zoib_fit,"zoib_regen"),1,moments::kurtosis)),
+                                                                    win_loo=which(row.names(comp_loo)=="zoib"),
+                                                                    win_loo_se=comp_loo[which(row.names(comp_loo)=="zoib"),2],
+                                                                    rmse=rmse_zoib,
+                                                                    marg_eff_est=mean(margin_zoib),
+                                                                    high_marg=quantile(margin_zoib,.95),
+                                                                    low_marg=quantile(margin_zoib,.05),
+                                                                    sd_marg=sd(margin_zoib)),
+                                                             tibble(model="Beta Regression - Transformed",
+                                                                    med_est=mean(X_beta_reg),
+                                                                    high=quantile(X_beta_reg,.95),
+                                                                    low=quantile(X_beta_reg,.05),
+                                                                    sd=sd(X_beta_reg),
+                                                                    loo_val=loo_betareg$estimates[1,1],
+                                                                    rmse=rmse_betareg,
+                                                                    kurt_est=mean(apply(yrep_betareg,1,moments::kurtosis)),
+                                                                    marg_eff_est=mean(margin_betareg),
+                                                                    high_marg=quantile(margin_betareg,.95),
+                                                                    low_marg=quantile(margin_betareg,.05),
+                                                                    sd_marg=sd(margin_betareg)),
+                                                             tibble(model="Beta Regression - (0,1)",
+                                                                    med_est=mean(X_beta_reg2),
+                                                                    high=quantile(X_beta_reg2,.95),
+                                                                    low=quantile(X_beta_reg2,.05),
+                                                                    sd=sd(X_beta_reg2),
+                                                                    loo_val=loo_betareg2$estimates[1,1],
+                                                                    kurt_est=mean(apply(yrep_betareg2,1,moments::kurtosis)),
+                                                                    rmse=rmse_betareg2,
+                                                                    marg_eff_est=mean(margin_betareg2),
+                                                                    high_marg=quantile(margin_betareg2,.95),
+                                                                    low_marg=quantile(margin_betareg2,.05),
+                                                                    sd_marg=sd(margin_betareg2)),
+                                                             tibble(model="OLS",
+                                                                    med_est=mean(X_beta_lm),
+                                                                    high=quantile(X_beta_lm,.95),
+                                                                    low=quantile(X_beta_lm,.05),
+                                                                    sd=sd(X_beta_lm),
+                                                                    kurt_est=mean(apply(yrep_lm,1,moments::kurtosis)),
+                                                                    loo_val=loo_lm$estimates[1,1],
+                                                                    win_loo=which(row.names(comp_loo)=="lm"),
+                                                                    win_loo_se=comp_loo[which(row.names(comp_loo)=="lm"),2],
+                                                                    rmse=rmse_lm,
+                                                                    marg_eff_est=mean(X_beta_lm),
+                                                                    high_marg=quantile(X_beta_lm,.95),
+                                                                    low_marg=quantile(X_beta_lm,.05),
+                                                                    sd_marg=sd(X_beta_lm)),
+                                                             tibble(model="Fractional",
+                                                                    med_est=mean(X_beta_frac),
+                                                                    high=quantile(X_beta_frac,.95),
+                                                                    low=quantile(X_beta_frac,.05),
+                                                                    sd=sd(X_beta_frac),
+                                                                    loo_val=loo_frac$estimates[1,1],
+                                                                    win_loo=which(row.names(comp_loo)=="frac"),
+                                                                    win_loo_se=comp_loo[which(row.names(comp_loo)=="frac"),2],
+                                                                    kurt_est=mean(apply(as.matrix(frac_fit,"frac_rep"),1,moments::kurtosis)),
+                                                                    rmse=rmse_frac,
+                                                                    marg_eff_est=mean(margin_frac),
+                                                                    high_marg=quantile(margin_frac,.95),
+                                                                    low_marg=quantile(margin_frac,.05),
+                                                                    sd_marg=sd(margin_frac))))
+  
+  
+},simul_data=simul_data,r_seeds=r_seeds) 
+#},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores())
 
 simul_data_final <- bind_rows(all_simul_data)
 

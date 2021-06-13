@@ -46,12 +46,12 @@ transformed parameters {
   
 }
 model {
-  coef_a ~ normal(0, 3);
-  coef_g ~ normal(0, 3);
-  coef_m ~ normal(0, 3);
+  coef_a ~ normal(0, 5);
+  coef_g ~ normal(0, 5);
+  coef_m ~ normal(0, 5);
   //coef_p ~ normal(0, 3);
   phi ~ exponential(.1);
-  alpha ~ normal(0,3);
+  alpha ~ normal(0,5);
   
   is_discrete ~ bernoulli_logit(psi);
   for (i in 1:n) {
