@@ -95,8 +95,8 @@ predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
 
 r_seeds <- c(6635,2216,8845,9936,3321)
 
-#all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
-all_simul_data <- lapply(1, function(i,simul_data=NULL,r_seeds=NULL) {
+all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
+#all_simul_data <- lapply(1, function(i,simul_data=NULL,r_seeds=NULL) {
   this_data <- slice(simul_data,i)
   cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
   
@@ -465,8 +465,8 @@ all_simul_data <- lapply(1, function(i,simul_data=NULL,r_seeds=NULL) {
                                                                     sd_marg=sd(margin_frac))))
   
   
-},simul_data=simul_data,r_seeds=r_seeds) 
-#},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores())
+#},simul_data=simul_data,r_seeds=r_seeds) 
+},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores())
 
 simul_data_final <- bind_rows(all_simul_data)
 
