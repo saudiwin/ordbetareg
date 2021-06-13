@@ -4,19 +4,20 @@
 # Simulation of 0 - 1 bounded dependent variables
 # Note simulation will take some time, approx ~2 days with 3 cores
 
-require(rstan)
+.libPaths("/home/rmk7/other_R_libs3")
+
+require(cmdstanr)
 require(bayesplot)
 require(dplyr)
-require(rstanarm)
+require(brms)
 require(loo)
+require(posterior)
 
 set.seed(772235)
 
-rstan_options("auto_write" = TRUE)
-
-beta_logit <- stan_model("beta_logit.stan")
-zoib_model <- stan_model("zoib_nophireg.stan")
-frac_mod <- stan_model("frac_logit.stan")
+beta_logit <- cmdstanr::cmdstan_model("beta_logit.stan")
+zoib_model <- cmdstan_model("zoib_nophireg.stan")
+frac_mod <- cmdstan_model("frac_logit.stan")
 
 # let's do some simulations
 
@@ -96,9 +97,15 @@ predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
 r_seeds <- c(6635,2216,8845,9936,3321)
 
 all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
-#all_simul_data <- lapply(1, function(i,simul_data=NULL,r_seeds=NULL) {
+#all_simul_data <- lapply(1:10, function(i,simul_data=NULL,r_seeds=NULL) {
+  
   this_data <- slice(simul_data,i)
   cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
+  
+
+# Draw from ordered beta regression ---------------------------------------
+
+  
   
   N <- this_data$N
   
@@ -148,6 +155,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   counter <- environment()
   counter$i <- 0
   
+  # get rid of very rare outcomes, can be difficult for ZOIB
+  
   while(((sum(final_out>0 & final_out<1)<5) || (sum(final_out==1)<5) || (sum(final_out==0)<5)) && (counter$i<20)) {
     
     final_out <- sapply(1:length(outcomes),function(i) {
@@ -182,6 +191,9 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   marg_eff <- mean((y1-y0)/((X + setstep(X))-(X - setstep(X))))
   
+
+# Fit models --------------------------------------------------------------
+  
   # now fit ordinal beta
   
   to_bl <- list(N_degen=sum(final_out %in% c(0,1)),
@@ -197,38 +209,48 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                 indices_prop=1:(sum(final_out>0 & final_out<1)),
                 run_gen=1)
   
-  fit_model <- sampling(beta_logit,data=to_bl,seed=r_seeds[1],
-                        chains=1,cores=1,iter=1000,pars=c("regen_all","X_beta","ord_log","cutpoints"))
+  fit_model <- beta_logit$sample(data=to_bl,seed=r_seeds[1],
+                        chains=1,parallel_chains=1,iter_warmup=500,
+                        iter_sampling=500)
   
   
   x <- as.matrix(X)
-  zoib_fit <- sampling(zoib_model,data=list(n=length(final_out),
+  zoib_fit <- zoib_model$sample(data=list(n=length(final_out),
                                             y=final_out,
                                             k=ncol(x),
                                             seed=r_seeds[2],
                                             x=x,
-                                            run_gen=1),chains=1,cores=1,iter=1000,pars=c("coef_m","zoib_regen","zoib_log","coef_a","coef_m","coef_g","alpha"))
+                                            run_gen=1),chains=1,parallel_chains=1,iter_warmup=500,
+                                iter_sampling=500)
   
   final_out_scale <- (final_out * (length(final_out) - 1) + .5) / length(final_out)
   
-  betareg_fit <- stan_betareg(formula = outcome~X,data=tibble(outcome=final_out_scale,
-                                                              X=X),chains=1,cores=1,iter=1000,
-                              seed=r_seeds[3])
+  betareg_fit <- brm(formula = outcome~X,data=tibble(outcome=final_out_scale,
+                                                              X=X),
+                     chains=1,cores=1,iter=1000,
+                              seed=r_seeds[3],
+                     family="beta",
+                     prior=set_prior("normal(0,5)", class = "b", coef = "X"),
+                     backend="cmdstanr")
+  
   yrep_betareg <- posterior_predict(betareg_fit,draws=100)
   # do a second one with just non0/non1 data
   
-  betareg_fit2 <- stan_betareg(formula = outcome~X,data=tibble(outcome=final_out[final_out>0 & final_out<1],
-                                                               X=X[final_out>0 & final_out<1]),
-                               chains=1,seed=r_seeds[4],
-                               cores=1,iter=1000)
+  betareg_fit2 <- update(betareg_fit,newdata=tibble(outcome=final_out[final_out>0 & final_out<1],
+                                                      X=X[final_out>0 & final_out<1]),
+                     chains=1,cores=1,iter=1000,
+                     seed=r_seeds[4],
+                     family="beta",
+                     backend="cmdstanr")
   
   yrep_betareg2 <- posterior_predict(betareg_fit2,draws=100)
   
   # fit OLS
   
-  lm_fit <- stan_lm(formula = outcome~X,data=tibble(outcome=final_out,
+  lm_fit <- brm(formula = outcome~X,data=tibble(outcome=final_out,
                                                     r_seeds[5],
-                                                    X=X),chains=1,cores=1,iter=1000,prior=NULL)
+                                                    X=X),chains=1,cores=1,iter=1000,
+                prior=set_prior("normal(0,5)", class = "b", coef = "X"))
   
   yrep_lm <- posterior_predict(lm_fit,draws=100)
   
@@ -240,38 +262,41 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                     run_gen=1,
                     n=nrow(x))
   
-  frac_fit <- sampling(frac_mod,data=frac_data,seed=r_seeds[1],
-                       chains=1,cores=1,iter=1000)
+  frac_fit <- frac_mod$sample(data=frac_data,seed=r_seeds[1],
+                       chains=1,parallel_chains = 1,
+                       iter_warmup=500,iter_sampling = 500)
   
   
-  
+
+# Calculate estimands -----------------------------------------------------
+
   
   # now return the full data frame
   
-  X_beta_ord <- as.matrix(fit_model,"X_beta")
-  X_beta_zoib <- as.matrix(zoib_fit,"coef_m")
+  X_beta_ord <- as_draws_matrix(fit_model$draws("X_beta"))
+  X_beta_zoib <- as_draws_matrix(zoib_fit$draws("coef_m"))
   X_beta_reg <- as.matrix(betareg_fit,pars="X")
   X_beta_reg2 <- as.matrix(betareg_fit2,pars="X")
   X_beta_lm <- as.matrix(lm_fit,pars="X")
-  X_beta_frac <- as.matrix(frac_fit,pars="X_beta")
+  X_beta_frac <- as_draws_matrix(frac_fit$draws(variables="X_beta"))
   
   # calculate rmse
   
-  rmse_ord <- sqrt(mean(apply(as.matrix(fit_model,"regen_all"),1,function(c) { (c - c(final_out[final_out %in% c(0,1)],final_out[final_out>0 & final_out<1]))^2 })))
-  rmse_zoib <-sqrt( mean(apply(as.matrix(zoib_fit,"zoib_regen"),1,function(c) { (c - final_out)^2 })))
+  rmse_ord <- sqrt(mean(apply(as_draws_matrix(fit_model$draws("regen_all")),1,function(c) { (c - c(final_out[final_out %in% c(0,1)],final_out[final_out>0 & final_out<1]))^2 })))
+  rmse_zoib <-sqrt( mean(apply(as_draws_matrix(zoib_fit$draws("zoib_regen")),1,function(c) { (c - final_out)^2 })))
   rmse_betareg <- sqrt(mean(apply(yrep_betareg,1,function(c) { (c - final_out)^2 })))
   rmse_betareg2 <- sqrt(mean(apply(yrep_betareg2,1,function(c) { (c - final_out[final_out>0 & final_out<1])^2 })))
   rmse_lm <- sqrt(mean(apply(yrep_lm,1,function(c) { (c - final_out)^2 })))
-  rmse_frac <- sqrt(mean(apply(as.matrix(frac_fit,"frac_rep"),1,function(c) { (c - final_out)^2 })))
+  rmse_frac <- sqrt(mean(apply(as_draws_matrix(frac_fit$draws("frac_rep")),1,function(c) { (c - final_out)^2 })))
   
   # calculate loo
   
-  loo_ordbeta <-try(loo(fit_model,"ord_log"))
+  loo_ordbeta <-try(fit_model$loo("ord_log"))
   loo_betareg <- loo(betareg_fit)
   loo_betareg2 <- loo(betareg_fit2)
-  loo_zoib <- try(loo(zoib_fit,"zoib_log"))
+  loo_zoib <- try(zoib_fit$loo("zoib_log"))
   loo_lm <- loo(lm_fit)
-  loo_frac <- try(loo(frac_fit,"frac_log"))
+  loo_frac <- try(frac_fit$loo("frac_log"))
   
   if(any('try-error' %in% c(class(loo_ordbeta),
                             class(loo_zoib),
@@ -290,16 +315,16 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   # calculate marginal effects
   
-  cutpoints_est <- as.matrix(fit_model,"cutpoints")
+  cutpoints_est <- as_draws_matrix(fit_model$draws("cutpoints"))
   
   margin_ord <- sapply(1:nrow(X_beta_ord), function(i) {
     y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
                           X=X_low,
-                          X_beta=X_beta_ord[i,])
+                          X_beta=c(X_beta_ord[i,]))
     
     y1 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
                           X=X_high,
-                          X_beta=X_beta_ord[i,])
+                          X_beta=c(X_beta_ord[i,]))
     
     marg_eff <- (y1-y0)/(X_high-X_low)
     
@@ -308,24 +333,24 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   # now for the ZOIB
   
-  coef_a <- as.matrix(zoib_fit,"coef_a")
-  coef_g <- as.matrix(zoib_fit,"coef_g")
-  alpha <- as.matrix(zoib_fit,"alpha")
+  coef_a <- as_draws_matrix(zoib_fit$draws("coef_a"))
+  coef_g <- as_draws_matrix(zoib_fit$draws("coef_g"))
+  alpha <- as_draws_matrix(zoib_fit$draws("alpha"))
   
   margin_zoib <- sapply(1:nrow(X_beta_zoib), function(i) {
     y0 <- predict_zoib(coef_g=coef_g[i],
                        coef_a=coef_a[i],
-                       alpha1=alpha[i,1],
-                       alpha2=alpha[i,2],
-                       alpha3=alpha[i,3],
+                       alpha1=c(alpha[i,1]),
+                       alpha2=c(alpha[i,2]),
+                       alpha3=c(alpha[i,3]),
                        X=X_low,
                        coef_m=X_beta_zoib[i,])
     
     y1 <-  predict_zoib(coef_g=coef_g[i],
                         coef_a=coef_a[i],
-                        alpha1=alpha[i,1],
-                        alpha2=alpha[i,2],
-                        alpha3=alpha[i,3],
+                        alpha1=c(alpha[i,1]),
+                        alpha2=c(alpha[i,2]),
+                        alpha3=c(alpha[i,3]),
                         X=X_high,
                         coef_m=X_beta_zoib[i,])
     
@@ -339,8 +364,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   betareg_int <- as.matrix(betareg_fit,pars="(Intercept)")
   
   margin_betareg <- sapply(1:nrow(X_beta_reg), function(i) {
-    y0 <- plogis(betareg_int[i,] + X_low*X_beta_reg[i,])
-    y1 <- plogis(betareg_int[i,] + X_high*X_beta_reg[i,])
+    y0 <- plogis(betareg_int[i,"b_Intercept"] + X_low*X_beta_reg[i,])
+    y1 <- plogis(betareg_int[i,"b_Intercept"] + X_high*X_beta_reg[i,])
     
     marg_eff <- (y1-y0)/(X_high-X_low)
     
@@ -350,8 +375,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   betareg2_int <- as.matrix(betareg_fit2,pars="(Intercept)")
   
   margin_betareg2 <- sapply(1:nrow(X_beta_reg2), function(i) {
-    y0 <- plogis(betareg2_int[i,] + X_low*X_beta_reg2[i,])
-    y1 <- plogis(betareg2_int[i,] + X_high*X_beta_reg2[i,])
+    y0 <- plogis(betareg2_int[i,"b_Intercept"] + X_low*X_beta_reg2[i,])
+    y1 <- plogis(betareg2_int[i,"b_Intercept"] + X_high*X_beta_reg2[i,])
     
     marg_eff <- (y1-y0)/(X_high-X_low)
     
@@ -361,11 +386,11 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   # Fractional logit marg effects -------------------------------------------
   
-  frac_int <- as.matrix(frac_fit,pars="alpha")
+  frac_int <- as_draws_matrix(frac_fit$draws(variables="alpha"))
   
   margin_frac <- sapply(1:nrow(X_beta_frac), function(i) {
-    y0 <- plogis(frac_int + X_low*X_beta_frac[i,])
-    y1 <- plogis(frac_int + X_high*X_beta_frac[i,])
+    y0 <- plogis(c(frac_int[i,]) + X_low*c(X_beta_frac[i,]))
+    y1 <- plogis(c(frac_int[i,]) + X_high*c(X_beta_frac[i,]))
     
     marg_eff <- (y1-y0)/(X_high-X_low)
     
@@ -385,25 +410,25 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   bind_cols(purrr::map_dfr(seq_len(6), ~this_data),bind_rows(tibble(model="Ordinal Beta Regression",
                                                                     med_est=mean(X_beta_ord),
-                                                                    high=quantile(X_beta_ord,.95),
-                                                                    low=quantile(X_beta_ord,.05),
+                                                                    high=c(quantile(X_beta_ord,.95)),
+                                                                    low=c(quantile(X_beta_ord,.05)),
                                                                     sd=sd(X_beta_ord),
                                                                     loo_val=loo_ordbeta$estimates[1,1],
                                                                     win_loo=which(row.names(comp_loo)=="ord"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="ord"),2],
                                                                     rmse=rmse_ord,
-                                                                    kurt_est=mean(apply(as.matrix(fit_model,"regen_all"),1,moments::kurtosis)),
+                                                                    kurt_est=mean(apply(as_draws_matrix(fit_model$draws("regen_all")),1,moments::kurtosis)),
                                                                     marg_eff_est=mean(margin_ord),
                                                                     high_marg=quantile(margin_ord,.95),
                                                                     low_marg=quantile(margin_ord,.05),
                                                                     sd_marg=sd(margin_ord)),
                                                              tibble(model="ZOIB",
                                                                     med_est=mean(X_beta_zoib),
-                                                                    high=quantile(X_beta_zoib,.95),
-                                                                    low=quantile(X_beta_zoib,.05),
+                                                                    high=c(quantile(X_beta_zoib,.95)),
+                                                                    low=c(quantile(X_beta_zoib,.05)),
                                                                     sd=sd(X_beta_zoib),
                                                                     loo_val=loo_zoib$estimates[1,1],
-                                                                    kurt_est=mean(apply(as.matrix(zoib_fit,"zoib_regen"),1,moments::kurtosis)),
+                                                                    kurt_est=mean(apply(as_draws_matrix(zoib_fit$draws("zoib_regen")),1,moments::kurtosis)),
                                                                     win_loo=which(row.names(comp_loo)=="zoib"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="zoib"),2],
                                                                     rmse=rmse_zoib,
@@ -413,8 +438,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     sd_marg=sd(margin_zoib)),
                                                              tibble(model="Beta Regression - Transformed",
                                                                     med_est=mean(X_beta_reg),
-                                                                    high=quantile(X_beta_reg,.95),
-                                                                    low=quantile(X_beta_reg,.05),
+                                                                    high=c(quantile(X_beta_reg,.95)),
+                                                                    low=c(quantile(X_beta_reg,.05)),
                                                                     sd=sd(X_beta_reg),
                                                                     loo_val=loo_betareg$estimates[1,1],
                                                                     rmse=rmse_betareg,
@@ -425,8 +450,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     sd_marg=sd(margin_betareg)),
                                                              tibble(model="Beta Regression - (0,1)",
                                                                     med_est=mean(X_beta_reg2),
-                                                                    high=quantile(X_beta_reg2,.95),
-                                                                    low=quantile(X_beta_reg2,.05),
+                                                                    high=c(quantile(X_beta_reg2,.95)),
+                                                                    low=c(quantile(X_beta_reg2,.05)),
                                                                     sd=sd(X_beta_reg2),
                                                                     loo_val=loo_betareg2$estimates[1,1],
                                                                     kurt_est=mean(apply(yrep_betareg2,1,moments::kurtosis)),
@@ -437,8 +462,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     sd_marg=sd(margin_betareg2)),
                                                              tibble(model="OLS",
                                                                     med_est=mean(X_beta_lm),
-                                                                    high=quantile(X_beta_lm,.95),
-                                                                    low=quantile(X_beta_lm,.05),
+                                                                    high=c(quantile(X_beta_lm,.95)),
+                                                                    low=c(quantile(X_beta_lm,.05)),
                                                                     sd=sd(X_beta_lm),
                                                                     kurt_est=mean(apply(yrep_lm,1,moments::kurtosis)),
                                                                     loo_val=loo_lm$estimates[1,1],
@@ -451,13 +476,13 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     sd_marg=sd(X_beta_lm)),
                                                              tibble(model="Fractional",
                                                                     med_est=mean(X_beta_frac),
-                                                                    high=quantile(X_beta_frac,.95),
-                                                                    low=quantile(X_beta_frac,.05),
+                                                                    high=c(quantile(X_beta_frac,.95)),
+                                                                    low=c(quantile(X_beta_frac,.05)),
                                                                     sd=sd(X_beta_frac),
                                                                     loo_val=loo_frac$estimates[1,1],
                                                                     win_loo=which(row.names(comp_loo)=="frac"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="frac"),2],
-                                                                    kurt_est=mean(apply(as.matrix(frac_fit,"frac_rep"),1,moments::kurtosis)),
+                                                                    kurt_est=mean(apply(as_draws_matrix(frac_fit$draws("frac_rep")),1,moments::kurtosis)),
                                                                     rmse=rmse_frac,
                                                                     marg_eff_est=mean(margin_frac),
                                                                     high_marg=quantile(margin_frac,.95),
