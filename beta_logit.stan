@@ -70,9 +70,13 @@ generated quantities {
   
   vector[run_gen==0 ? 0 : N_pred_degen+N_pred_prop] regen_degen; // which model is selected (degenerate or proportional)
   vector[run_gen==0 ? 0 : N_pred_degen+N_pred_prop] regen_all; // final (combined) outcome -- defined as random subset of rows
+  vector[run_gen==0 ? 0 : N_pred_degen+N_pred_prop] regen_epred;
   vector[run_gen==0 ? 0 : N_pred_degen+N_pred_prop] ord_log; // store log calculation for loo
   
   if(run_gen==1) {
+    
+    row_vector[2] all_pr[N_pred_degen+N_pred_prop];
+    
     if(N_pred_degen>0) {
      // first do degenerate outcomes 
     // note: these could be *re-generated* as beta/propotions
@@ -87,6 +91,10 @@ generated quantities {
         ord_log[i] = log_inv_logit(calc_degen[i] - cutpoints[2]);
       }
       
+      // don't need zero
+      
+      all_pr[i] = [log(inv_logit(calc_degen[i] - cutpoints[1]) - inv_logit(calc_degen[i] - cutpoints[2])) + log_inv_logit(calc_degen[i]),
+                    log_inv_logit(calc_degen[i] - cutpoints[2])];
       
       if(regen_degen[i]==1) {
         regen_all[i] = 0;
@@ -106,6 +114,9 @@ generated quantities {
       
       for(i in 1:num_elements(indices_prop)) {
         
+        all_pr[i+skip] = [log(inv_logit(calc_prop[i] - cutpoints[1]) - inv_logit(calc_prop[i] - cutpoints[2])) + log_inv_logit(calc_prop[i]),
+        log_inv_logit(calc_prop[i] - cutpoints[2])];
+        
         // draw an outcome 0 / prop / 1
         regen_degen[i+skip] = ordered_logistic_rng(covar_prop[indices_prop[i],]*X_beta,cutpoints);
         
@@ -122,6 +133,12 @@ generated quantities {
         }
         
       } 
+      }
+      
+      for(i in 1:(N_pred_degen + N_pred_prop)) {
+        
+        regen_epred[i] = sum(exp(all_pr[i]));
+        
       }
   }
   

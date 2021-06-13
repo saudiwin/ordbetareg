@@ -6,7 +6,7 @@
 
 .libPaths("/home/rmk7/other_R_libs3")
 
-cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
+#cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
 
 require(cmdstanr)
 require(bayesplot)
@@ -98,8 +98,8 @@ predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
 
 r_seeds <- c(6635,2216,8845,9936,3321)
 
-all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
-#all_simul_data <- lapply(1:10, function(i,simul_data=NULL,r_seeds=NULL) {
+#all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
+all_simul_data <- lapply(1:2, function(i,simul_data=NULL,r_seeds=NULL) {
   
   this_data <- slice(simul_data,i)
   cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
@@ -235,7 +235,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                      prior=set_prior("normal(0,5)", class = "b", coef = "X"),
                      backend="cmdstanr")
   
-  yrep_betareg <- posterior_predict(betareg_fit,draws=100)
+  yrep_betareg <- posterior_epred(betareg_fit,draws=100)
   # do a second one with just non0/non1 data
   
   betareg_fit2 <- update(betareg_fit,newdata=tibble(outcome=final_out[final_out>0 & final_out<1],
@@ -245,16 +245,17 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                      family="beta",
                      backend="cmdstanr")
   
-  yrep_betareg2 <- posterior_predict(betareg_fit2,draws=100)
+  yrep_betareg2 <- posterior_epred(betareg_fit2,draws=100)
   
   # fit OLS
   
   lm_fit <- brm(formula = outcome~X,data=tibble(outcome=final_out,
                                                     r_seeds[5],
                                                     X=X),chains=1,cores=1,iter=1000,
+                backend="cmdstanr",
                 prior=set_prior("normal(0,5)", class = "b", coef = "X"))
   
-  yrep_lm <- posterior_predict(lm_fit,draws=100)
+  yrep_lm <- posterior_epred(lm_fit,draws=100)
   
   # fit fractional logit
   
@@ -284,8 +285,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   # calculate rmse
   
-  rmse_ord <- sqrt(mean(apply(as_draws_matrix(fit_model$draws("regen_all")),1,function(c) { (c - c(final_out[final_out %in% c(0,1)],final_out[final_out>0 & final_out<1]))^2 })))
-  rmse_zoib <-sqrt( mean(apply(as_draws_matrix(zoib_fit$draws("zoib_regen")),1,function(c) { (c - final_out)^2 })))
+  rmse_ord <- sqrt(mean(apply(as_draws_matrix(fit_model$draws("regen_epred")),1,function(c) { (c - c(final_out[final_out %in% c(0,1)],final_out[final_out>0 & final_out<1]))^2 })))
+  rmse_zoib <-sqrt( mean(apply(as_draws_matrix(zoib_fit$draws("zoib_epred")),1,function(c) { (c - final_out)^2 })))
   rmse_betareg <- sqrt(mean(apply(yrep_betareg,1,function(c) { (c - final_out)^2 })))
   rmse_betareg2 <- sqrt(mean(apply(yrep_betareg2,1,function(c) { (c - final_out[final_out>0 & final_out<1])^2 })))
   rmse_lm <- sqrt(mean(apply(yrep_lm,1,function(c) { (c - final_out)^2 })))
@@ -303,7 +304,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   if(any('try-error' %in% c(class(loo_ordbeta),
                             class(loo_zoib),
                             class(loo_frac)))) {
-    comp_loo <- matrix(rep(NA,8),ncol=2)
+    comp_loo <- matrix(rep(NA,6),ncol=2)
     row.names(comp_loo) <- c("ord","zoib","frac")
     loo_ordbeta <- list(estimates=matrix(c(NA,NA),ncol=2))
     loo_zoib <- list(estimates=matrix(c(NA,NA),ncol=2))
@@ -419,7 +420,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     win_loo=which(row.names(comp_loo)=="ord"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="ord"),2],
                                                                     rmse=rmse_ord,
-                                                                    kurt_est=mean(apply(as_draws_matrix(fit_model$draws("regen_all")),1,moments::kurtosis)),
+                                                                    kurt_est=mean(apply(as_draws_matrix(fit_model$draws("regen_epred")),1,moments::kurtosis)),
                                                                     marg_eff_est=mean(margin_ord),
                                                                     high_marg=quantile(margin_ord,.95),
                                                                     low_marg=quantile(margin_ord,.05),
@@ -430,7 +431,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     low=c(quantile(X_beta_zoib,.05)),
                                                                     sd=sd(X_beta_zoib),
                                                                     loo_val=loo_zoib$estimates[1,1],
-                                                                    kurt_est=mean(apply(as_draws_matrix(zoib_fit$draws("zoib_regen")),1,moments::kurtosis)),
+                                                                    kurt_est=mean(apply(as_draws_matrix(zoib_fit$draws("zoib_epred")),1,moments::kurtosis)),
                                                                     win_loo=which(row.names(comp_loo)=="zoib"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="zoib"),2],
                                                                     rmse=rmse_zoib,
@@ -492,8 +493,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     sd_marg=sd(margin_frac))))
   
   
-#},simul_data=simul_data,r_seeds=r_seeds) 
-},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores())
+},simul_data=simul_data,r_seeds=r_seeds) 
+#},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores())
 
 simul_data_final <- bind_rows(all_simul_data)
 

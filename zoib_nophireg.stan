@@ -66,12 +66,18 @@ model {
 generated quantities {
   vector[run_gen==1 ? n: 0] zoib_log;
   vector[run_gen==1 ? n: 0] zoib_regen;
+  vector[run_gen==1 ? n: 0] zoib_epred;
   vector[run_gen==1 ? n: 0] is_discrete_regen;
   
   if(run_gen==1) {
     for (i in 1:n) {
+      
+      
       real psit = inv_logit(psi[i]);
       real gammat = inv_logit(gamma[i]);
+      
+      zoib_epred[i] = psit * gammat + (1-psit) * mu[i];
+      
       if (y[i] == 0) {
         zoib_log[i] = log(psit) + log1m(gammat);
       } else if (y[i] == 1) {
@@ -79,6 +85,8 @@ generated quantities {
       } else {
         zoib_log[i] = log1m(psit) + beta_proportion_lpdf(y[i] | mu[i], phi);
       }
+      
+      
       
       is_discrete_regen[i] = bernoulli_rng(psit);
       
