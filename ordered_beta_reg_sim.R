@@ -6,7 +6,7 @@
 
 .libPaths("/home/rmk7/other_R_libs3")
 
-cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
+#cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
 
 require(cmdstanr)
 require(bayesplot)
@@ -99,7 +99,7 @@ predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
 r_seeds <- c(6635,2216,8845,9936,3321)
 
 all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
-#all_simul_data <- lapply(1:2, function(i,simul_data=NULL,r_seeds=NULL) {
+#all_simul_data <- lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
   
   this_data <- slice(simul_data,i)
   cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
@@ -230,6 +230,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   fit_model <-try(beta_logit$sample(data=to_bl,seed=r_seeds[1],
                         chains=1,parallel_chains=1,iter_warmup=500,
+                        refresh=0,
                         iter_sampling=500))
   
   
@@ -238,6 +239,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                             y=final_out,
                                             k=ncol(x),
                                             seed=r_seeds[2],
+                                            refresh=0,
                                             x=x,
                                             run_gen=1),chains=1,parallel_chains=1,iter_warmup=500,
                                 iter_sampling=500))
@@ -248,24 +250,27 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                               X=X),
                      chains=1,cores=1,iter=1000,
                               seed=r_seeds[3],
+                     silent=0,refresh=0,
                      family="beta",
                      prior=set_prior("normal(0,5)", class = "b", coef = "X"),
-                     backend="cmdstanr"))
+                     backend='cmdstanr'))
   
   betareg_fit2 <- try(update(betareg_fit,newdata=tibble(outcome=final_out[final_out>0 & final_out<1],
                                                         X=X[final_out>0 & final_out<1]),
                              chains=1,cores=1,iter=1000,
                              seed=r_seeds[4],
+                             silent=0,refresh=0,
                              family="beta",
                              backend="cmdstanr"))
   
   frac_fit <- try(frac_mod$sample(data=frac_data,seed=r_seeds[1],
-                                  chains=1,parallel_chains = 1,
+                                  chains=1,parallel_chains = 1,refresh=0,
                                   iter_warmup=500,iter_sampling = 500))
   
   lm_fit <- try(brm(formula = outcome~X,data=tibble(outcome=final_out,
                                                     r_seeds[5],
                                                     X=X),chains=1,cores=1,iter=1000,
+                    silent=0,refresh=0,
                     backend="cmdstanr",
                     prior=set_prior("normal(0,5)", class = "b", coef = "X")))
   
