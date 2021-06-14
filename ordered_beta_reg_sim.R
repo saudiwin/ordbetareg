@@ -542,8 +542,8 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   
 #},simul_data=simul_data,r_seeds=r_seeds) 
-},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores()/2)
+},simul_data=simul_data,r_seeds=r_seeds,mc.cores=10)
 
-simul_data_final <- bind_rows(all_simul_data)
+#simul_data_final <- bind_rows(all_simul_data)
 
-saveRDS(simul_data_final,"data/sim_cont_X.rds")
+saveRDS(all_simul_data,"data/sim_cont_X.rds")
