@@ -6,7 +6,7 @@
 
 .libPaths("/home/rmk7/other_R_libs3")
 
-#cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
+cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
 
 require(cmdstanr)
 require(bayesplot)
