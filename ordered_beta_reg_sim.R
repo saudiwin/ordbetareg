@@ -6,7 +6,7 @@
 
 .libPaths("/home/rmk7/other_R_libs3")
 
-#cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
+cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
 
 require(cmdstanr)
 require(bayesplot)
@@ -542,7 +542,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   
 #},simul_data=simul_data,r_seeds=r_seeds) 
-},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores())
+},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores()/2)
 
 simul_data_final <- bind_rows(all_simul_data)
 
