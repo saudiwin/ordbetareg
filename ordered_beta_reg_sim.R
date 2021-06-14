@@ -175,6 +175,11 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   }
   
   if((sum(final_out>0 & final_out<1)<5) || (sum(final_out==1)<5) || (sum(final_out==0)<5)) {
+    
+    print(paste0("DGP failed for row ",i,"\n"))
+    
+    this_data$status <- "dgp_failure"
+    
     return(this_data)
   }
   
@@ -211,64 +216,102 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                 indices_prop=1:(sum(final_out>0 & final_out<1)),
                 run_gen=1)
   
-  fit_model <- beta_logit$sample(data=to_bl,seed=r_seeds[1],
-                        chains=1,parallel_chains=1,iter_warmup=500,
-                        iter_sampling=500)
-  
-  
   x <- as.matrix(X)
-  zoib_fit <- zoib_model$sample(data=list(n=length(final_out),
-                                            y=final_out,
-                                            k=ncol(x),
-                                            seed=r_seeds[2],
-                                            x=x,
-                                            run_gen=1),chains=1,parallel_chains=1,iter_warmup=500,
-                                iter_sampling=500)
   
   final_out_scale <- (final_out * (length(final_out) - 1) + .5) / length(final_out)
-  
-  betareg_fit <- brm(formula = outcome~X,data=tibble(outcome=final_out_scale,
-                                                              X=X),
-                     chains=1,cores=1,iter=1000,
-                              seed=r_seeds[3],
-                     family="beta",
-                     prior=set_prior("normal(0,5)", class = "b", coef = "X"),
-                     backend="cmdstanr")
-  
-  yrep_betareg <- posterior_epred(betareg_fit,draws=100)
-  # do a second one with just non0/non1 data
-  
-  betareg_fit2 <- update(betareg_fit,newdata=tibble(outcome=final_out[final_out>0 & final_out<1],
-                                                      X=X[final_out>0 & final_out<1]),
-                     chains=1,cores=1,iter=1000,
-                     seed=r_seeds[4],
-                     family="beta",
-                     backend="cmdstanr")
-  
-  yrep_betareg2 <- posterior_epred(betareg_fit2,draws=100)
-  
-  # fit OLS
-  
-  lm_fit <- brm(formula = outcome~X,data=tibble(outcome=final_out,
-                                                    r_seeds[5],
-                                                    X=X),chains=1,cores=1,iter=1000,
-                backend="cmdstanr",
-                prior=set_prior("normal(0,5)", class = "b", coef = "X"))
-  
-  yrep_lm <- posterior_epred(lm_fit,draws=100)
-  
-  # fit fractional logit
   
   frac_data <- list(y=final_out,
                     x=x,
                     k=ncol(x),
                     run_gen=1,
                     n=nrow(x))
+  # fit all models
   
-  frac_fit <- frac_mod$sample(data=frac_data,seed=r_seeds[1],
-                       chains=1,parallel_chains = 1,
-                       iter_warmup=500,iter_sampling = 500)
   
+  fit_model <-try(beta_logit$sample(data=to_bl,seed=r_seeds[1],
+                        chains=1,parallel_chains=1,iter_warmup=500,
+                        iter_sampling=500))
+  
+  
+ 
+  zoib_fit <- try(zoib_model$sample(data=list(n=length(final_out),
+                                            y=final_out,
+                                            k=ncol(x),
+                                            seed=r_seeds[2],
+                                            x=x,
+                                            run_gen=1),chains=1,parallel_chains=1,iter_warmup=500,
+                                iter_sampling=500))
+  
+  
+  
+  betareg_fit <- try(brm(formula = outcome~X,data=tibble(outcome=final_out_scale,
+                                                              X=X),
+                     chains=1,cores=1,iter=1000,
+                              seed=r_seeds[3],
+                     family="beta",
+                     prior=set_prior("normal(0,5)", class = "b", coef = "X"),
+                     backend="cmdstanr"))
+  
+  betareg_fit2 <- try(update(betareg_fit,newdata=tibble(outcome=final_out[final_out>0 & final_out<1],
+                                                        X=X[final_out>0 & final_out<1]),
+                             chains=1,cores=1,iter=1000,
+                             seed=r_seeds[4],
+                             family="beta",
+                             backend="cmdstanr"))
+  
+  frac_fit <- try(frac_mod$sample(data=frac_data,seed=r_seeds[1],
+                                  chains=1,parallel_chains = 1,
+                                  iter_warmup=500,iter_sampling = 500))
+  
+  lm_fit <- try(brm(formula = outcome~X,data=tibble(outcome=final_out,
+                                                    r_seeds[5],
+                                                    X=X),chains=1,cores=1,iter=1000,
+                    backend="cmdstanr",
+                    prior=set_prior("normal(0,5)", class = "b", coef = "X")))
+  
+  if('try-error' %in% c(class(fit_model),
+                        class(zoib_model),
+                        class(betareg_fit),
+                        class(betareg_fit2),
+                        class(frac_fit),
+                        class(lm_fit))) {
+    
+    print(paste0("Estimation failed for row ",i,"\n"))
+    
+    this_data$status <- "estimation_failure"
+    
+    return(this_data)
+    
+  }
+  
+  yrep_ord <- try(as_draws_matrix(fit_model$draws("regen_epred")))
+  
+  yrep_zoib <- try(as_draws_matrix(zoib_fit$draws("zoib_epred")))
+  
+  yrep_betareg <- try(posterior_epred(betareg_fit,draws=100))
+
+  yrep_betareg2 <- try(posterior_epred(betareg_fit2,draws=100))
+
+  yrep_lm <- try(posterior_epred(lm_fit,draws=100))
+  
+  yrep_frac <- try(as_draws_matrix(frac_fit$draws("frac_rep")))
+  
+  if('try-error' %in% c(class(yrep_ord),
+                        class(yrep_zoib),
+                        class(yrep_betareg),
+                        class(yrep_betareg2),
+                        class(yrep_frac),
+                        class(yrep_lm))) {
+    
+    print(paste0("Estimation failed for row ",i,"\n"))
+    
+    this_data$status <- "estimation_failure"
+    
+    return(this_data)
+    
+  }
+  
+  this_data$status <- "success"
   
 
 # Calculate estimands -----------------------------------------------------
@@ -285,12 +328,12 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   # calculate rmse
   
-  rmse_ord <- sqrt(mean(apply(as_draws_matrix(fit_model$draws("regen_epred")),1,function(c) { (c - c(final_out[final_out %in% c(0,1)],final_out[final_out>0 & final_out<1]))^2 })))
-  rmse_zoib <-sqrt( mean(apply(as_draws_matrix(zoib_fit$draws("zoib_epred")),1,function(c) { (c - final_out)^2 })))
+  rmse_ord <- sqrt(mean(apply(yrep_ord,1,function(c) { (c - c(final_out[final_out %in% c(0,1)],final_out[final_out>0 & final_out<1]))^2 })))
+  rmse_zoib <-sqrt( mean(apply(yrep_zoib,1,function(c) { (c - final_out)^2 })))
   rmse_betareg <- sqrt(mean(apply(yrep_betareg,1,function(c) { (c - final_out)^2 })))
   rmse_betareg2 <- sqrt(mean(apply(yrep_betareg2,1,function(c) { (c - final_out[final_out>0 & final_out<1])^2 })))
   rmse_lm <- sqrt(mean(apply(yrep_lm,1,function(c) { (c - final_out)^2 })))
-  rmse_frac <- sqrt(mean(apply(as_draws_matrix(frac_fit$draws("frac_rep")),1,function(c) { (c - final_out)^2 })))
+  rmse_frac <- sqrt(mean(apply(yrep_frac,1,function(c) { (c - final_out)^2 })))
   
   # calculate loo
   
@@ -420,7 +463,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     win_loo=which(row.names(comp_loo)=="ord"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="ord"),2],
                                                                     rmse=rmse_ord,
-                                                                    kurt_est=mean(apply(as_draws_matrix(fit_model$draws("regen_epred")),1,moments::kurtosis)),
+                                                                    kurt_est=mean(apply(yrep_ord,1,moments::kurtosis)),
                                                                     marg_eff_est=mean(margin_ord),
                                                                     high_marg=quantile(margin_ord,.95),
                                                                     low_marg=quantile(margin_ord,.05),
@@ -431,7 +474,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     low=c(quantile(X_beta_zoib,.05)),
                                                                     sd=sd(X_beta_zoib),
                                                                     loo_val=loo_zoib$estimates[1,1],
-                                                                    kurt_est=mean(apply(as_draws_matrix(zoib_fit$draws("zoib_epred")),1,moments::kurtosis)),
+                                                                    kurt_est=mean(apply(yrep_zoib,1,moments::kurtosis)),
                                                                     win_loo=which(row.names(comp_loo)=="zoib"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="zoib"),2],
                                                                     rmse=rmse_zoib,
@@ -485,7 +528,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
                                                                     loo_val=loo_frac$estimates[1,1],
                                                                     win_loo=which(row.names(comp_loo)=="frac"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="frac"),2],
-                                                                    kurt_est=mean(apply(as_draws_matrix(frac_fit$draws("frac_rep")),1,moments::kurtosis)),
+                                                                    kurt_est=mean(apply(yrep_frac,1,moments::kurtosis)),
                                                                     rmse=rmse_frac,
                                                                     marg_eff_est=mean(margin_frac),
                                                                     high_marg=quantile(margin_frac,.95),
