@@ -4,9 +4,9 @@
 # Simulation of 0 - 1 bounded dependent variables
 # Note simulation will take some time, approx ~2 days with 3 cores
 
-.libPaths("/home/rmk7/other_R_libs3")
+#.libPaths("/home/rmk7/other_R_libs3")
 
-cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
+#cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
 
 require(cmdstanr)
 require(bayesplot)
@@ -102,7 +102,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
 #all_simul_data <- lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
   
   this_data <- slice(simul_data,i)
-  cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
+  #cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
   
 
 # Draw from ordered beta regression ---------------------------------------
@@ -542,7 +542,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   
 #},simul_data=simul_data,r_seeds=r_seeds) 
-},simul_data=simul_data,r_seeds=r_seeds,mc.cores=10)
+},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores())
 
 #simul_data_final <- bind_rows(all_simul_data)
 
