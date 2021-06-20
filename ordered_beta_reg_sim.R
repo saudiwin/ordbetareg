@@ -14,8 +14,13 @@ require(dplyr)
 require(brms)
 require(loo)
 require(posterior)
+require(future.apply)
 
 RNGkind("L'Ecuyer-CMRG")
+
+beta_logit <- cmdstanr::cmdstan_model("beta_logit.stan")
+zoib_model <- cmdstanr::cmdstan_model("zoib_nophireg.stan")
+frac_mod <- cmdstanr::cmdstan_model("frac_logit.stan")
 
 set.seed(772235)
 
@@ -98,16 +103,13 @@ predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
 
 r_seeds <- c(6635,2216,8845,9936,3321,63914)
 
-all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
+plan(multicore)
+
+all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
 #all_simul_data <- lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
   
   this_data <- slice(simul_data,i)
   #cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
-  
-  beta_logit <- cmdstanr::cmdstan_model("beta_logit.stan")
-  zoib_model <- cmdstanr::cmdstan_model("zoib_nophireg.stan")
-  frac_mod <- cmdstanr::cmdstan_model("frac_logit.stan")
-  
 
 # Draw from ordered beta regression ---------------------------------------
 
@@ -546,8 +548,7 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   
   
 #},simul_data=simul_data,r_seeds=r_seeds) 
-},simul_data=simul_data,r_seeds=r_seeds,mc.cores=parallel::detectCores(),
-mc.set.seed = TRUE)
+},simul_data=simul_data,r_seeds=r_seeds)
 
 #simul_data_final <- bind_rows(all_simul_data)
 
