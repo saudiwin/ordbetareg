@@ -242,10 +242,10 @@ all_simul_data <- parallel::mclapply(1:nrow(simul_data), function(i,simul_data=N
   zoib_fit <- try(zoib_model$sample(data=list(n=length(final_out),
                                             y=final_out,
                                             k=ncol(x),
-                                            seed=r_seeds[2],
-                                            refresh=0,
                                             x=x,
-                                            run_gen=1),chains=1,parallel_chains=1,iter_warmup=500,
+                                            run_gen=1), 
+                                    seed=r_seeds[2],
+                                    refresh=0,chains=1,parallel_chains=1,iter_warmup=500,
                                 iter_sampling=500))
   
   
