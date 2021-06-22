@@ -70,7 +70,7 @@ posterior_predict_ord_beta_reg <- function(i, draws, ...) {
 
 # for calculating marginal effects/conditional expectations
 
-pp_expect_ord_beta_reg <- function(draws) {
+posterior_epred_ord_beta_reg<- function(draws) {
   
   cutzero <- draws$dpars$cutzero
   cutone <- draws$dpars$cutone

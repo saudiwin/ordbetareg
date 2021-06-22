@@ -162,7 +162,7 @@ posterior_predict_ord_beta_reg <- function(i, draws, ...) {
 
 # for calculating marginal effects/conditional expectations
 
-pp_expect_ord_beta_reg <- function(draws) {
+posterior_epred_ord_beta_reg <- function(draws) {
 
   cutzero <- draws$dpars$cutzero
   cutone <- draws$dpars$cutone
@@ -223,7 +223,9 @@ priors_phireg <- set_prior("normal(0,5)",class="b") +
 
 Given these new functions, we can then run a `brms` model as usual. The one catch is that we need to include the `priors` object in the `priors` argument and the `stanvars` object in the `stanvars` argument of the function, which comes from the code block above. The second and *very important* item is that the model formula must start with `0 + Intercept` for the independent (right-hand side) variables. You can add anything you want after that first term. This is to ensure no multi-collinearity between the ordinal cutpoints in the model and the intercept.
 
-Other than that, everything is the same and you can use any cool `brms` features. To demonstrate some of these, I will model education and income as ordinal predictors by using the `mo()` function. By doing so, we can get a single effect for education and income instead of having to use dummies for separate education/income categories. As a result, I can include an interaction between the two variables to see if wealthier more educated people have better views towards college professors than poorer better educated people. Finally, I include varying (random) census region intercepts:
+Other than that, everything is the same and you can use any cool `brms` features. To demonstrate some of these, I will model education and income as ordinal predictors by using the `mo()` function. By doing so, we can get a single effect for education and income instead of having to use dummies for separate education/income categories. As a result, I can include an interaction between the two variables to see if wealthier more educated people have better views towards college professors than poorer better educated people. Finally, I include varying (random) census region intercepts.
+
+One note is that I use the `cmdstanr` backend for `brms` to use the latest version of Stan, but you can remove that option to use the Stan that comes with `brms` (`rstan`).
 
 ```{r run_brms}
 
@@ -232,6 +234,7 @@ brms_fit <- brm(therm ~ 0 + Intercept + mo(education)*mo(income) + (1|region), d
                 cores=2,chains=2,
                 prior = priors,
                 refresh=0,
+                backend="cmdstanr",
                 stanvars=stanvars)
 
 ```
@@ -312,7 +315,8 @@ brms_fit_phireg <- brm(bf(therm ~ 0 + Intercept + education + income,
                 cores=2,chains=2,
                 prior = priors_phireg,
                 refresh=100,
-                stanvars=stanvars)
+                stanvars=stanvars,
+                backend="cmdstanr")
 
 ```
 
