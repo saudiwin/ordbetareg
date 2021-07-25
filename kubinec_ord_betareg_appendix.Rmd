@@ -17,7 +17,9 @@ author: |
 
 require(rstan)
 require(dplyr)
-require(rstanarm)
+require(brms)
+require(cmdstanr)
+require(posterior)
 require(tidyr)
 require(lubridate)
 require(loo)
@@ -31,9 +33,7 @@ knitr::opts_chunk$set(warning=F,message=F)
 
 source("helper_func.R")
 
-rstan_options(auto_write=T)
-
-ord_beta_mod <- stan_model("beta_logit.stan")
+ord_beta_mod <- cmdstan_model("beta_logit.stan")
 
 # to reproduce results, change if you want fresh sampling
 
@@ -129,11 +129,11 @@ to_bl <- list(N_degen=sum(final_out %in% c(0,1)),
                 indices_prop=1:(sum(final_out>0 & final_out<1)),
                 run_gen=1)
   
-  fit_model <- sampling(ord_beta_mod,data=to_bl,seed=random_seed,
+  fit_model <- ord_beta_mod$sample(data=to_bl,seed=random_seed,
                         refresh=0,
-                        chains=1,cores=1,iter=1000,pars=c("regen_all","X_beta","ord_log","cutpoints"))
+                        chains=1,cores=1,iter_sampling=1000)
   
-  cutpoints <- as.matrix(fit_model,"cutpoints")
+  cutpoints <- fit_model$draws("cutpoints") %>% as_draws_matrix
   
   print(fit_model,c("X_beta","cutpoints"))
 ```
@@ -141,7 +141,7 @@ to_bl <- list(N_degen=sum(final_out %in% c(0,1)),
 We can see from the model results that our coefficient `X_beta` was estimated without bias (equal to -1). The cutpoints were estimated with a little bit of bias due to the censoring we did on the outcome variable, but are still quite close to the original values. Furthermore, they are estimated at extremes -- the lower cutpoint is `r round(plogis(mean(cutpoints[,1])),4)` and the upper cutpoint is `r round(plogis(mean(cutpoints[,2])),4)`. As this example indicates, there is no reason not to fit a model with no observations at the bounds. The cutpoints are still identified and the model converges without a problem. Furthermore, we can then still simulate observations at the bounds from the posterior predictive distribution:
 
 ```{r y_rep}
-ppc_dens_overlay(final_out,as.matrix(fit_model,"regen_all"))
+ppc_dens_overlay(final_out,as_draws_matrix(fit_model$draws("regen_all")))
 ```
 
 

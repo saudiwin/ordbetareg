@@ -73,9 +73,9 @@ predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
                          combined_out=T) {
   
   # we'll assume the same eta was used to generate outcomes
-  psi <- plogis(alpha1 + X %*% as.matrix(coef_a))
-  gamma <- plogis(alpha2 + X %*% as.matrix(coef_g))
-  eta <- alpha3 + X %*% as.matrix(coef_m)
+  psi <- plogis(as.numeric(alpha1) + X %*% coef_a)
+  gamma <- plogis(as.numeric(alpha2) + X %*% coef_g)
+  eta <- as.numeric(alpha3) + X %*% coef_m
   
   # probabilities for three possible categories (0, proportion, 1)
   low <- psi * (1-gamma)
