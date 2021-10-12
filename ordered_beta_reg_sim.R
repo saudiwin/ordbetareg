@@ -15,10 +15,11 @@ require(brms)
 require(loo)
 require(posterior)
 require(future.apply)
+require(faux)
 
 RNGkind("L'Ecuyer-CMRG")
 
-beta_logit <- cmdstanr::cmdstan_model("beta_logit.stan")
+beta_logit <- cmdstanr::cmdstan_model("beta_logit.stan",compile = T)
 zoib_model <- cmdstanr::cmdstan_model("zoib_nophireg.stan")
 frac_mod <- cmdstanr::cmdstan_model("frac_logit.stan")
 
@@ -29,10 +30,12 @@ set.seed(772235)
 N_rep <- 10000
 
 simul_data <- tibble(N=round(runif(N_rep,100,4000),0),
-                     X_beta=runif(N_rep,-5,5),
+                     k=floor(runif(N_rep,1,15)),
+                     rho=runif(N_rep,0,.9),
                      phi=runif(N_rep,0.5,30),
                      cutpoints1=runif(N_rep,-10,-1)) %>% 
-  mutate(cutpoints2=cutpoints1+runif(N_rep,0.5,10))
+  mutate(cutpoints2=cutpoints1+runif(N_rep,0.5,10),
+         X_beta=sapply(k, function(i) runif(i,-5,5)))
 
 # we can also use it to calculate "true" marginal effect of X on Y using code from margins package
 # i.e., numerical differentiation
@@ -49,7 +52,7 @@ predict_ordbeta <- function(cutpoints=NULL,X=NULL,X_beta=NULL,
                             combined_out=T) {
   
   # we'll assume the same eta was used to generate outcomes
-  eta <- X*X_beta
+  eta <- X%*%matrix(X_beta)[,1]
   
   # probabilities for three possible categories (0, proportion, 1)
   low <- 1-plogis(eta - cutpoints[1])
@@ -77,9 +80,9 @@ predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
                          combined_out=T) {
   
   # we'll assume the same eta was used to generate outcomes
-  psi <- plogis(alpha1 + X %*% as.matrix(coef_a))
-  gamma <- plogis(alpha2 + X %*% as.matrix(coef_g))
-  eta <- alpha3 + X %*% as.matrix(coef_m)
+  psi <- plogis(alpha1 + X %*% t(coef_a))
+  gamma <- plogis(alpha2 + X %*% t(coef_g))
+  eta <- alpha3 + X %*% t(coef_m)
   
   # probabilities for three possible categories (0, proportion, 1)
   low <- psi * (1-gamma)
@@ -96,6 +99,22 @@ predict_zoib <- function(coef_g=NULL,coef_a=NULL,coef_m=NULL,
          proportion_value=eta,
          pr_one=high)
   }
+  
+}
+
+gen_x <- function(k,rho,N_rep) {
+  
+  # generate true coefs
+  
+  true_coef <- runif(k, -5, 5)
+  
+  # generate matrix of correlated Xs
+  
+  out_x <- sapply(1:length(k), function(i) {
+    
+    this_x <- 1
+      
+  })
   
 }
 
@@ -117,18 +136,23 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
   
   N <- this_data$N
   
-  X <- rnorm(N,runif(1,-2,2),1)
+  #X <- rnorm(N,runif(1,-2,2),1)
   
-  X_beta <- this_data$X_beta
-  eta <- X*X_beta
+  X_beta <- this_data$X_beta[[1]]
+  
+  # need to create X
+  
+  X <- rnorm_multi(n=N,vars=this_data$k,r=this_data$rho,as.matrix=T)
+  
+  eta <- X%*%matrix(X_beta)
   
   # ancillary parameter of beta distribution
   phi <- this_data$phi
   
   # predictor for ordered model
-  mu1 <- eta
+  mu1 <- eta[,1]
   # predictor for beta regression
-  mu2 <- eta
+  mu2 <- eta[,1]
   
   cutpoints <- c(this_data$cutpoints1,this_data$cutpoints2)
   
@@ -159,6 +183,14 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
       return(1)
     }
   })
+  
+  # check for floating point errors
+  
+  final_out <- ifelse(final_out>(1 - 1e-10) & final_out<1,final_out - 1e-10,
+                               final_out)
+  
+  final_out <- ifelse(final_out<(0 + 1e-10) & final_out>0,final_out + 1e-10,
+                               final_out)
   
   counter <- environment()
   counter$i <- 0
@@ -191,18 +223,30 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
   
   # calculate "true" marginal effects
   
-  X_low <- X - setstep(X)
-  X_high <- X + setstep(X)
+  # loop over k
   
-  y0 <- predict_ordbeta(cutpoints=cutpoints,
-                        X=X_low,
-                        X_beta=X_beta)
+  X_low <- X
+  X_high <- X
   
-  y1 <- predict_ordbeta(cutpoints=cutpoints,
-                        X=X_high,
-                        X_beta=X_beta)
+  marg_eff <- sapply(1:this_data$k, function(tk)  {
+    
+    X_low[,tk] <- X[,tk] - setstep(X[,tk])
+    X_high[,tk] <- X[,tk] + setstep(X[,tk])
+    
+    y0 <- predict_ordbeta(cutpoints=cutpoints,
+                          X=X_low,
+                          X_beta=X_beta)
+    
+    y1 <- predict_ordbeta(cutpoints=cutpoints,
+                          X=X_high,
+                          X_beta=X_beta)
+    
+    mean((y1-y0)/(X_high[,tk]-X_low[,tk]))
+    
+    
+  })
   
-  marg_eff <- mean((y1-y0)/((X + setstep(X))-(X - setstep(X))))
+  
   
 
 # Fit models --------------------------------------------------------------
@@ -211,18 +255,18 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
   
   to_bl <- list(N_degen=sum(final_out %in% c(0,1)),
                 N_prop=sum(final_out>0 & final_out<1),
-                X=1,
+                X=this_data$k,
                 outcome_prop=final_out[final_out>0 & final_out<1],
                 outcome_degen=final_out[final_out %in% c(0,1)],
-                covar_prop=as.matrix(X[final_out>0 & final_out<1]),
-                covar_degen=as.matrix(X[final_out %in% c(0,1)]),
+                covar_prop=X[final_out>0 & final_out<1,,drop=F],
+                covar_degen=X[final_out %in% c(0,1),,drop=F],
                 N_pred_degen=sum(final_out %in% c(0,1)),
                 N_pred_prop=sum(final_out>0 & final_out<1),
                 indices_degen=1:(sum(final_out %in% c(0,1))),
                 indices_prop=1:(sum(final_out>0 & final_out<1)),
                 run_gen=1)
   
-  x <- as.matrix(X)
+  x <- X
   
   final_out_scale <- (final_out * (length(final_out) - 1) + .5) / length(final_out)
   
@@ -258,11 +302,11 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
                               seed=r_seeds[3],
                      silent=0,refresh=0,
                      family="beta",
-                     prior=set_prior("normal(0,5)", class = "b", coef = "X"),
+                     prior=set_prior("normal(0,5)", class = "b"),
                      backend='cmdstanr'))
   
   betareg_fit2 <- try(update(betareg_fit,newdata=tibble(outcome=final_out[final_out>0 & final_out<1],
-                                                        X=X[final_out>0 & final_out<1]),
+                                                        X=X[final_out>0 & final_out<1,]),
                              chains=1,cores=1,iter=1000,
                              seed=r_seeds[4],
                              silent=0,refresh=0,
@@ -278,7 +322,7 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
                                                     X=X),chains=1,cores=1,iter=1000,
                     silent=0,refresh=0,
                     backend="cmdstanr",
-                    prior=set_prior("normal(0,5)", class = "b", coef = "X")))
+                    prior=set_prior("normal(0,5)", class = "b")))
   
   if('try-error' %in% c(class(fit_model),
                         class(zoib_model),
@@ -374,19 +418,27 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
   
   cutpoints_est <- as_draws_matrix(fit_model$draws("cutpoints"))
   
-  margin_ord <- sapply(1:nrow(X_beta_ord), function(i) {
-    y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
-                          X=X_low,
-                          X_beta=c(X_beta_ord[i,]))
+  margin_ord <- lapply(1:ncol(X), function(tk) {
     
-    y1 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
-                          X=X_high,
-                          X_beta=c(X_beta_ord[i,]))
+    X_low[,tk] <- X[,tk] - setstep(X[,tk])
+    X_high[,tk] <- X[,tk] + setstep(X[,tk])
     
-    marg_eff <- (y1-y0)/(X_high-X_low)
+    tibble(marg_eff=sapply(1:nrow(X_beta_ord), function(i) {
+      y0 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+                            X=X_low,
+                            X_beta=c(X_beta_ord[i,]))
+      
+      y1 <- predict_ordbeta(cutpoints=cutpoints_est[i,],
+                            X=X_high,
+                            X_beta=c(X_beta_ord[i,]))
+      
+      marg_eff <- (y1-y0)/(X_high[,tk]-X_low[,tk])
+      
+      mean(marg_eff)
+    }),
+    x_col=tk)
     
-    mean(marg_eff)
-  })
+    }) %>% bind_rows
   
   # now for the ZOIB
   
@@ -394,157 +446,199 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
   coef_g <- as_draws_matrix(zoib_fit$draws("coef_g"))
   alpha <- as_draws_matrix(zoib_fit$draws("alpha"))
   
-  margin_zoib <- sapply(1:nrow(X_beta_zoib), function(i) {
-    y0 <- predict_zoib(coef_g=coef_g[i],
-                       coef_a=coef_a[i],
-                       alpha1=c(alpha[i,1]),
-                       alpha2=c(alpha[i,2]),
-                       alpha3=c(alpha[i,3]),
-                       X=X_low,
-                       coef_m=X_beta_zoib[i,])
+  margin_zoib <- lapply(1:ncol(X), function(tk) {
     
-    y1 <-  predict_zoib(coef_g=coef_g[i],
-                        coef_a=coef_a[i],
-                        alpha1=c(alpha[i,1]),
-                        alpha2=c(alpha[i,2]),
-                        alpha3=c(alpha[i,3]),
-                        X=X_high,
-                        coef_m=X_beta_zoib[i,])
+    X_low[,tk] <- X[,tk] - setstep(X[,tk])
+    X_high[,tk] <- X[,tk] + setstep(X[,tk]) 
     
-    marg_eff <- (y1-y0)/(X_high-X_low)
+    tibble(marg_eff=    sapply(1:nrow(X_beta_zoib), function(i) {
+      y0 <- predict_zoib(coef_g=coef_g[i,],
+                         coef_a=coef_a[i,],
+                         alpha1=c(alpha[i,1]),
+                         alpha2=c(alpha[i,2]),
+                         alpha3=c(alpha[i,3]),
+                         X=X_low,
+                         coef_m=X_beta_zoib[i,])
+      
+      y1 <-  predict_zoib(coef_g=coef_g[i,],
+                          coef_a=coef_a[i,],
+                          alpha1=c(alpha[i,1]),
+                          alpha2=c(alpha[i,2]),
+                          alpha3=c(alpha[i,3]),
+                          X=X_high,
+                          coef_m=X_beta_zoib[i,])
+      
+      marg_eff <- (y1-y0)/(X_high[,tk]-X_low[,tk])
+      
+      mean(marg_eff)
+    }),
+    x_col=tk)
     
-    mean(marg_eff)
-  })
+    }) %>% bind_rows
   
   # now betareg
   
   betareg_int <- as.matrix(betareg_fit,pars="(Intercept)")
   
-  margin_betareg <- sapply(1:nrow(X_beta_reg), function(i) {
-    y0 <- plogis(betareg_int[i,"b_Intercept"] + X_low*X_beta_reg[i,])
-    y1 <- plogis(betareg_int[i,"b_Intercept"] + X_high*X_beta_reg[i,])
+  margin_betareg <- lapply(1:ncol(X), function(tk) {
     
-    marg_eff <- (y1-y0)/(X_high-X_low)
+    X_low[,tk] <- X[,tk] - setstep(X[,tk])
+    X_high[,tk] <- X[,tk] + setstep(X[,tk]) 
     
-    mean(marg_eff)
-  })
+    tibble(marg_eff= sapply(1:nrow(X_beta_reg), function(i) {
+      y0 <- plogis(betareg_int[i,"b_Intercept"] + X_low*X_beta_reg[i,])
+      y1 <- plogis(betareg_int[i,"b_Intercept"] + X_high*X_beta_reg[i,])
+      
+      marg_eff <- (y1-y0)/(X_high[,tk]-X_low[,tk])
+      
+      mean(marg_eff)
+    }),
+    x_col=tk)
+    
+    }) %>% bind_rows
   
   betareg2_int <- as.matrix(betareg_fit2,pars="(Intercept)")
   
-  margin_betareg2 <- sapply(1:nrow(X_beta_reg2), function(i) {
-    y0 <- plogis(betareg2_int[i,"b_Intercept"] + X_low*X_beta_reg2[i,])
-    y1 <- plogis(betareg2_int[i,"b_Intercept"] + X_high*X_beta_reg2[i,])
+  margin_betareg2 <- lapply(1:ncol(X), function(tk) {
     
-    marg_eff <- (y1-y0)/(X_high-X_low)
+    X_low[,tk] <- X[,tk] - setstep(X[,tk])
+    X_high[,tk] <- X[,tk] + setstep(X[,tk]) 
     
-    mean(marg_eff)
-  })
+    tibble(marg_eff= sapply(1:nrow(X_beta_reg), function(i) {
+      y0 <- plogis(betareg2_int[i,"b_Intercept"] + X_low*X_beta_reg[i,])
+      y1 <- plogis(betareg2_int[i,"b_Intercept"] + X_high*X_beta_reg[i,])
+      
+      marg_eff <- (y1-y0)/(X_high[,tk]-X_low[,tk])
+      
+      mean(marg_eff)
+    }),
+    x_col=tk)
+    
+  }) %>% bind_rows
   
   
   # Fractional logit marg effects -------------------------------------------
   
   frac_int <- as_draws_matrix(frac_fit$draws(variables="alpha"))
   
-  margin_frac <- sapply(1:nrow(X_beta_frac), function(i) {
-    y0 <- plogis(c(frac_int[i,]) + X_low*c(X_beta_frac[i,]))
-    y1 <- plogis(c(frac_int[i,]) + X_high*c(X_beta_frac[i,]))
+  margin_frac <- lapply(1:ncol(X), function(tk) {
     
-    marg_eff <- (y1-y0)/(X_high-X_low)
+    X_low[,tk] <- X[,tk] - setstep(X[,tk])
+    X_high[,tk] <- X[,tk] + setstep(X[,tk]) 
     
-    mean(marg_eff)
-  })
+    tibble(marg_eff= sapply(1:nrow(X_beta_frac), function(i) {
+      y0 <- plogis(c(frac_int[i,]) + X_low*c(X_beta_frac[i,]))
+      y1 <- plogis(c(frac_int[i,]) + X_high*c(X_beta_frac[i,]))
+      
+      marg_eff <- (y1-y0)/(X_high[,tk]-X_low[,tk])
+      
+      mean(marg_eff)
+    }),
+    x_col=tk)
+    
+    
+    }) %>% bind_rows
   
   
   
-  this_data$marg_eff <- marg_eff
+  this_data$marg_eff <- list(marg_eff)
   this_data$true_kurt <- moments::kurtosis(final_out)
   
   
   
   # Combine estimates -------------------------------------------------------
   
-  
+  sum_marg <- function(d,func,...) {
+    
+   ret_vec <-  arrange(d,x_col) %>% 
+      group_by(x_col) %>% 
+      summarize(sum_stat=func(marg_eff,...)) %>% 
+      pull(sum_stat)
+   
+   list(ret_vec)
+   
+  }
   
   bind_cols(purrr::map_dfr(seq_len(6), ~this_data),bind_rows(tibble(model="Ordinal Beta Regression",
-                                                                    med_est=mean(X_beta_ord),
-                                                                    high=c(quantile(X_beta_ord,.95)),
-                                                                    low=c(quantile(X_beta_ord,.05)),
-                                                                    sd=sd(X_beta_ord),
+                                                                    med_est=list(apply(X_beta_ord,2,mean)),
+                                                                    high=list(apply(X_beta_ord,2,quantile,.95)),
+                                                                    low=list(apply(X_beta_ord,2,quantile,.05)),
+                                                                    sd_calc=list(apply(X_beta_ord,2,sd)),
                                                                     loo_val=loo_ordbeta$estimates[1,1],
                                                                     win_loo=which(row.names(comp_loo)=="ord"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="ord"),2],
                                                                     rmse=rmse_ord,
                                                                     kurt_est=mean(apply(yrep_ord,1,moments::kurtosis)),
-                                                                    marg_eff_est=mean(margin_ord),
-                                                                    high_marg=quantile(margin_ord,.95),
-                                                                    low_marg=quantile(margin_ord,.05),
-                                                                    sd_marg=sd(margin_ord)),
+                                                                    marg_eff_est=sum_marg(margin_ord,mean),
+                                                                    high_marg=sum_marg(margin_ord,quantile,.95),
+                                                                    low_marg=sum_marg(margin_ord,quantile,.05),
+                                                                    sd_marg=sum_marg(margin_ord,sd)),
                                                              tibble(model="ZOIB",
-                                                                    med_est=mean(X_beta_zoib),
-                                                                    high=c(quantile(X_beta_zoib,.95)),
-                                                                    low=c(quantile(X_beta_zoib,.05)),
-                                                                    sd=sd(X_beta_zoib),
+                                                                    med_est=list(apply(X_beta_zoib,2,mean)),
+                                                                    high=list(apply(X_beta_zoib,2,quantile,.95)),
+                                                                    low=list(apply(X_beta_zoib,2,quantile,.05)),
+                                                                    sd_calc=list(apply(X_beta_zoib,2,sd)),
                                                                     loo_val=loo_zoib$estimates[1,1],
                                                                     kurt_est=mean(apply(yrep_zoib,1,moments::kurtosis)),
                                                                     win_loo=which(row.names(comp_loo)=="zoib"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="zoib"),2],
                                                                     rmse=rmse_zoib,
-                                                                    marg_eff_est=mean(margin_zoib),
-                                                                    high_marg=quantile(margin_zoib,.95),
-                                                                    low_marg=quantile(margin_zoib,.05),
-                                                                    sd_marg=sd(margin_zoib)),
+                                                                    marg_eff_est=sum_marg(margin_zoib,mean),
+                                                                    high_marg=sum_marg(margin_zoib,quantile,.95),
+                                                                    low_marg=sum_marg(margin_zoib,quantile,.05),
+                                                                    sd_marg=sum_marg(margin_zoib,sd)),
                                                              tibble(model="Beta Regression - Transformed",
-                                                                    med_est=mean(X_beta_reg),
-                                                                    high=c(quantile(X_beta_reg,.95)),
-                                                                    low=c(quantile(X_beta_reg,.05)),
-                                                                    sd=sd(X_beta_reg),
+                                                                    med_est=list(apply(X_beta_reg,2,mean)),
+                                                                    high=list(apply(X_beta_reg,2,quantile,.95)),
+                                                                    low=list(apply(X_beta_reg,2,quantile,.05)),
+                                                                    sd_calc=list(apply(X_beta_reg,2,sd)),
                                                                     loo_val=loo_betareg$estimates[1,1],
                                                                     rmse=rmse_betareg,
                                                                     kurt_est=mean(apply(yrep_betareg,1,moments::kurtosis)),
-                                                                    marg_eff_est=mean(margin_betareg),
-                                                                    high_marg=quantile(margin_betareg,.95),
-                                                                    low_marg=quantile(margin_betareg,.05),
-                                                                    sd_marg=sd(margin_betareg)),
+                                                                    marg_eff_est=sum_marg(margin_betareg,mean),
+                                                                    high_marg=sum_marg(margin_betareg,quantile,.95),
+                                                                    low_marg=sum_marg(margin_betareg,quantile,.05),
+                                                                    sd_marg=sum_marg(margin_betareg,sd)),
                                                              tibble(model="Beta Regression - (0,1)",
-                                                                    med_est=mean(X_beta_reg2),
-                                                                    high=c(quantile(X_beta_reg2,.95)),
-                                                                    low=c(quantile(X_beta_reg2,.05)),
-                                                                    sd=sd(X_beta_reg2),
+                                                                    med_est=list(apply(X_beta_reg2,2,mean)),
+                                                                    high=list(apply(X_beta_reg2,2,quantile,.95)),
+                                                                    low=list(apply(X_beta_reg2,2,quantile,.05)),
+                                                                    sd_calc=list(apply(X_beta_reg2,2,sd)),
                                                                     loo_val=loo_betareg2$estimates[1,1],
                                                                     kurt_est=mean(apply(yrep_betareg2,1,moments::kurtosis)),
                                                                     rmse=rmse_betareg2,
-                                                                    marg_eff_est=mean(margin_betareg2),
-                                                                    high_marg=quantile(margin_betareg2,.95),
-                                                                    low_marg=quantile(margin_betareg2,.05),
-                                                                    sd_marg=sd(margin_betareg2)),
+                                                                    marg_eff_est=sum_marg(margin_betareg2,mean),
+                                                                    high_marg=sum_marg(margin_betareg2,quantile,.95),
+                                                                    low_marg=sum_marg(margin_betareg2,quantile,.05),
+                                                                    sd_marg=sum_marg(margin_betareg2,sd)),
                                                              tibble(model="OLS",
-                                                                    med_est=mean(X_beta_lm),
-                                                                    high=c(quantile(X_beta_lm,.95)),
-                                                                    low=c(quantile(X_beta_lm,.05)),
-                                                                    sd=sd(X_beta_lm),
+                                                                    med_est=list(apply(X_beta_lm,2,mean)),
+                                                                    high=list(apply(X_beta_lm,2,quantile,.95)),
+                                                                    low=list(apply(X_beta_lm,2,quantile,.05)),
+                                                                    sd_calc=list(apply(X_beta_lm,2,sd)),
                                                                     kurt_est=mean(apply(yrep_lm,1,moments::kurtosis)),
                                                                     loo_val=loo_lm$estimates[1,1],
                                                                     win_loo=which(row.names(comp_loo)=="lm"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="lm"),2],
                                                                     rmse=rmse_lm,
-                                                                    marg_eff_est=mean(X_beta_lm),
-                                                                    high_marg=quantile(X_beta_lm,.95),
-                                                                    low_marg=quantile(X_beta_lm,.05),
-                                                                    sd_marg=sd(X_beta_lm)),
+                                                                    marg_eff_est=list(apply(X_beta_lm,2,mean)),
+                                                                    high_marg=list(apply(X_beta_lm,2,quantile,.95)),
+                                                                    low_marg=list(apply(X_beta_lm,2,quantile,.05)),
+                                                                    sd_marg=list(apply(X_beta_lm,2,sd))),
                                                              tibble(model="Fractional",
-                                                                    med_est=mean(X_beta_frac),
-                                                                    high=c(quantile(X_beta_frac,.95)),
-                                                                    low=c(quantile(X_beta_frac,.05)),
-                                                                    sd=sd(X_beta_frac),
+                                                                    med_est=list(apply(X_beta_frac,2,mean)),
+                                                                    high=list(apply(X_beta_frac,2,quantile,.95)),
+                                                                    low=list(apply(X_beta_frac,2,quantile,.05)),
+                                                                    sd_calc=list(apply(X_beta_frac,2,sd)),
                                                                     loo_val=loo_frac$estimates[1,1],
                                                                     win_loo=which(row.names(comp_loo)=="frac"),
                                                                     win_loo_se=comp_loo[which(row.names(comp_loo)=="frac"),2],
                                                                     kurt_est=mean(apply(yrep_frac,1,moments::kurtosis)),
                                                                     rmse=rmse_frac,
-                                                                    marg_eff_est=mean(margin_frac),
-                                                                    high_marg=quantile(margin_frac,.95),
-                                                                    low_marg=quantile(margin_frac,.05),
-                                                                    sd_marg=sd(margin_frac))))
+                                                                    marg_eff_est=sum_marg(margin_frac,mean),
+                                                                    high_marg=sum_marg(margin_frac,quantile,.95),
+                                                                    low_marg=sum_marg(margin_frac,quantile,.05),
+                                                                    sd_marg=sum_marg(margin_frac,sd))))
   
   
 #},simul_data=simul_data,r_seeds=r_seeds) 

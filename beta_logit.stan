@@ -33,7 +33,12 @@ transformed parameters {
   if(N_degen>0) {
     calc_degen = covar_degen*X_beta;
   }
+  
+  //print(calc_degen[1:10]);
+  
   calc_prop = covar_prop*X_beta;
+  
+  //print(calc_prop[1:10]);
   
 }
 model {
