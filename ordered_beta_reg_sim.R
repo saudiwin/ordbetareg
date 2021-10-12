@@ -1,6 +1,6 @@
 # Robert Kubinec
 # New York University Abu Dhabi
-# January 23, 2020
+# October 12, 2021
 # Simulation of 0 - 1 bounded dependent variables
 # Note simulation will take some time, approx ~2 days with 3 cores
 
