@@ -128,7 +128,7 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
 #all_simul_data <- lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
   
   this_data <- slice(simul_data,i)
-  #cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
+  cat(file = "simul_status.txt",paste0("Now on row ",i),append = T)
 
 # Draw from ordered beta regression ---------------------------------------
 
@@ -559,7 +559,7 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
    
   }
   
-  bind_cols(purrr::map_dfr(seq_len(6), ~this_data),bind_rows(tibble(model="Ordinal Beta Regression",
+  try(bind_cols(purrr::map_dfr(seq_len(6), ~this_data),bind_rows(tibble(model="Ordinal Beta Regression",
                                                                     med_est=list(apply(X_beta_ord,2,mean)),
                                                                     high=list(apply(X_beta_ord,2,quantile,.95)),
                                                                     low=list(apply(X_beta_ord,2,quantile,.05)),
@@ -638,11 +638,11 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
                                                                     marg_eff_est=sum_marg(margin_frac,mean),
                                                                     high_marg=sum_marg(margin_frac,quantile,.95),
                                                                     low_marg=sum_marg(margin_frac,quantile,.05),
-                                                                    sd_marg=sum_marg(margin_frac,sd))))
+                                                                    sd_marg=sum_marg(margin_frac,sd)))))
   
   
 #},simul_data=simul_data,r_seeds=r_seeds) 
-},simul_data=simul_data,r_seeds=r_seeds)
+},simul_data=simul_data,r_seeds=r_seeds,future.seed=TRUE)
 
 #simul_data_final <- bind_rows(all_simul_data)
 
