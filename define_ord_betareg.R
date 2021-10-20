@@ -112,15 +112,58 @@ log_lik_ord_beta_reg <- function(i, draws) {
   
 }
 
+###### Code declaring induced dirichlet prior ####
+# code from Michael Betancourt/Staffan Betner
+# discussion here: https://discourse.mc-stan.org/t/dirichlet-prior-on-ordinal-regression-cutpoints-in-brms/20640
+dirichlet_prior <- "
+  real induced_dirichlet_lpdf(vector c, vector alpha, real phi) {
+    int K = num_elements(c) + 1;
+    vector[K - 1] sigma = inv_logit(phi - c);
+    vector[K] p;
+    matrix[K, K] J = rep_matrix(0, K, K);
+    
+    // Induced ordinal probabilities
+    p[1] = 1 - sigma[1];
+    for (k in 2:(K - 1))
+      p[k] = sigma[k - 1] - sigma[k];
+    p[K] = sigma[K - 1];
+    
+    // Baseline column of Jacobian
+    for (k in 1:K) J[k, 1] = 1;
+    
+    // Diagonal entries of Jacobian
+    for (k in 2:K) {
+      real rho = sigma[k - 1] * (1 - sigma[k - 1]);
+      J[k, k] = - rho;
+      J[k - 1, k] = rho;
+    }
+    
+    return   dirichlet_lpdf(p | alpha)
+           + log_determinant(J);
+  }
+"
+dirichlet_prior_stanvar <- stanvar(scode = dirichlet_prior, block = "functions")
+
+stanvar(scode = "ordered[2] thresh;
+              thresh[1] = cutzero;
+              thresh[2] = cutzero+exp(cutone);", 
+        block = "tparameters") -> # there might be a better way to specify this
+  dirichlet_prior_ordbeta_stanvar
+
+stanvars <- stanvars + dirichlet_prior_stanvar + dirichlet_prior_ordbeta_stanvar
+
 # Feel free to add any other priors / change the priors on b, 
 # which represent regression coefficients on the logit
 # scale
-
-priors <- set_prior("normal(0,5)",class="b") + 
-  prior(constant(0),class="b",coef="Intercept") +
-  prior_string("target += normal_lpdf((cutzero + exp(cutone)) - cutzero|0,3) + cutone",check=F) +
+  
+priors <- set_prior("target += induced_dirichlet_lpdf(thresh | rep_vector(1, 3), 0)", check=FALSE) +
+  set_prior("normal(0,5)",class="b") + 
   set_prior("exponential(.1)",class="phi")
 
+# priors <- set_prior("normal(0,5)",class="b") + 
+#   prior(constant(0),class="b",coef="Intercept") +
+#   prior_string("target += normal_lpdf((cutzero + exp(cutone)) - cutzero|0,3) + cutone",check=F) +
+#   set_prior("exponential(.1)",class="phi")
+
 priors_phireg <- set_prior("normal(0,5)",class="b") + 
-  prior(constant(0),class="b",coef="Intercept") +
-  prior_string("target += normal_lpdf((cutzero + exp(cutone)) - cutzero|0,3) + cutone",check=F)
+  set_prior("target += induced_dirichlet_lpdf(thresh | rep_vector(1, 3), 0)", check=FALSE) 
