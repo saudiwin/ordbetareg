@@ -144,7 +144,7 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
   
   X <- rnorm_multi(n=N,vars=this_data$k,r=this_data$rho,as.matrix=T)
   
-  eta <- X%*%matrix(X_beta)
+  eta <- -2 + X%*%matrix(X_beta)
   
   # ancillary parameter of beta distribution
   phi <- this_data$phi

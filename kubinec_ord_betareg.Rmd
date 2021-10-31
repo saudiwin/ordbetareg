@@ -250,30 +250,36 @@ The middle and lower-left panels in the figure show results for $\hat{elpd}_{PSI
 
 ```{r comparebase,fig.cap="Comparison of Simulation Performance Results",fig.width=6,fig.height=8}
 
-all_sim <- readRDS("data/sim_cont_X.rds") %>% bind_rows
+require(forcats)
 
-# need to remove an outlier (rmse shouldn't be greater than 1)
-
-#all_sim <- filter(all_sim,rmse<1)
-
-# need function to calculate correct conf intervals
+all_sim <- readRDS("data/sim_cont_X.rds")
+checkc <- sapply(all_sim, class)
+all_sim <- all_sim[checkc!='try-error']
+all_sim <- bind_rows(all_sim) %>% 
+  unchop(c("med_est","X_beta","marg_eff","high","low","var_calc",
+           'marg_eff_est','high_marg','low_marg','var_marg'))
 
 my_conf_fun <- function(x) {
   if(all(x>=0 & x<=1)) {
     # use binomial confidence intervals
     bi_ci <- binom::binom.bayes(sum(x,na.rm=T),length(x))
-    return(tibble(y=bi_ci$mean,
+    return(list(y=bi_ci$mean,
                   ymin=bi_ci$lower,
                   ymax=bi_ci$upper))
   } else {
     boot_ci <- Hmisc::smean.cl.boot(x)
-    return(tibble(y=boot_ci["Mean"],
+    return(list(y=boot_ci["Mean"],
                   ymin=boot_ci["Lower"],
                   ymax=boot_ci["Upper"]))
   }
 }
 
-all_sim %>% 
+
+# need to remove an outlier (rmse shouldn't be greater than 1)
+
+#all_sim <- filter(all_sim,rmse<1)
+
+all_sim_calc <- all_sim %>% 
   mutate(s_err=sign(marg_eff)!=sign(marg_eff_est),
             m_err=abs(marg_eff_est)/abs(marg_eff),
          cov=ifelse(marg_eff>0,marg_eff<high_marg & marg_eff>low_marg,
@@ -281,30 +287,62 @@ all_sim %>%
          loo_val=ifelse(model %in% c("Beta Regression - (0,1)",
                                      "Beta Regression - Transformed"),
                         NA,loo_val)) %>% 
+  group_by(N,marg_eff) %>% 
+  mutate(var_marg=var_marg/var_marg[model=="Ordinal Beta Regression"]) %>% 
+  ungroup %>% 
   select(RMSE="rmse",`ELPD LOO`="loo_val",
-         `Average LOO Rank`="win_loo",`Proportion S Errors`="s_err",
-         `M Errors`="m_err",`5% - 95% Coverage`="cov",model) %>% 
+         `Proportion S Errors`="s_err",
+         `M Errors`="m_err",`Variance (% Ordered)`='var_marg',
+         `5% - 95% Coverage`="cov",`No. Parameters`="p_loo",model) %>% 
   gather(key = "type",value="estimate",-model) %>% 
   filter(!is.na(model)) %>% 
-  mutate(hline=case_when(type=="M Errors"~1,
-                         type=="5% - 95% Coverage"~.90,
-                         TRUE~NA_real_)) %>% 
-  ggplot(aes(y=estimate,x=model)) +
-  stat_summary(fun.data=my_conf_fun,geom="pointrange", na.rm=TRUE) +
-  facet_wrap(~type,scales="free_x",dir="v") +
-  theme_minimal() +
-  geom_hline(aes(yintercept=hline),linetype=2, na.rm=TRUE) +
-  ylab("") +
-  xlab("") +
-  theme(panel.grid=element_blank(),
-        panel.background = element_rect(fill = NA, color = "gray")) +
-  coord_flip()
+  group_by(model,type) %>% 
+  summarize(boot_all=my_conf_fun(estimate[!is.na(estimate)]),
+            lower=boot_all$ymin,
+            med_est=boot_all$y,
+            upper=boot_all$ymax) %>% 
+  select(-boot_all) %>% 
+  distinct %>% 
+  ungroup
+
+  all_sim_calc %>% 
+  mutate_at(c("lower",'upper','med_est'),~round(.,digits=3)) %>% 
+  mutate_at(c("lower",'upper','med_est'),~ifelse(type %in% c("Proportion S Errors",
+                                                             "5% - 95% Coverage",
+                                                             "Variance (% Ordered)"), 
+                                                 paste0(.*100,"%"),.)) %>%
+  mutate(model=factor(model),
+         model=fct_relevel(model,"Ordinal Beta Regression","ZOIB"),
+         model=recode(model, `Ordinal Beta Regression`="Ordered Beta Regression")) %>% 
+  arrange(type, model) %>% 
+  select(Statistic="type",
+         Model="model",
+         `5%`="lower",
+         `Mean`="med_est",
+         `95%`="upper") %>% 
+  kable(caption="Comparison of Simulation Diagnostics") %>% 
+  kable_styling(latex_options = c("striped","hold_position")) %>% 
+  collapse_rows(columns=1)
+  
+  #   mutate(hline=case_when(type=="M Errors"~1,
+  #                        type=="5% - 95% Coverage"~.90,
+  #                        TRUE~NA_real_)) %>% 
+  # ggplot(aes(y=estimate,x=model)) +
+  # stat_summary(fun.data=my_conf_fun,geom="pointrange", na.rm=TRUE) +
+  # facet_wrap(~type,scales="free_x",dir="v") +
+  # theme_minimal() +
+  # geom_hline(aes(yintercept=hline),linetype=2, na.rm=TRUE) +
+  # ylab("") +
+  # xlab("") +
+  # theme(panel.grid=element_blank(),
+  #       panel.background = element_rect(fill = NA, color = "gray")) +
+  # coord_flip()
 
 ```
 
 As a result, even without looking at empirical examples, it is difficult to recommend OLS, fractional logit or transformed continuous outcomes as a general approach for analyzing this type of data. Fractional logit and OLS perform reasonably at recovering marginal effects, but they suffer when distributions become multi-modal. Transformation of the outcome to the $[0,1]$ interval is also clearly not a harmless strategy as it dramatically changes the estimated marginal effects. Throwing away discrete outcomes can likewise affect parameter estimates even though the continuous outcomes are predicted by the same linear model as the discrete outcomes.
 
-```{r lookurt,fig.cap="Comparison of $\\hat{elpd}_{psis_loo}$ by Sample Kurtosis Values", message=F}
+```{r lookurt,fig.cap="Comparison of $\\hat{elpd}_{psis_loo}$ by Sample Kurtosis Values", message=F, include=F}
 
 all_sim %>%
   select(model,loo_val,true_kurt) %>% 
@@ -324,6 +362,7 @@ all_sim %>%
   scale_x_log10()
 
 ```
+
 
 As such, it is worth discussing the ZOIB and ordered beta regression as principal alternatives for analyzing this data. As is seen in the statistics above, the ZOIB can recover marginal effects and has high $\hat{elpd}_{PSIS-LOO}$ scores, though its uncertainty intervals do not always recover the true effect and it is not always the preferred model. To distinguish the models further, I turn to an empirical example that can further decompose differences between these models. Even though they tend to produce similar marginal effects, the parameterizations are still quite different and the ZOIB can unhelpfully over-fit data by emphasizing differences between discrete and continuous outcomes, resulting in misleading inferences when such differences are likely sampling artifacts.
 

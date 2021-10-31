@@ -50,6 +50,7 @@ data {
 }
 parameters {
   vector[X] X_beta; // common predictor
+  real alpha; // common intercept
   ordered[2] cutpoints; // cutpoints on ordered (latent) variable (also stand in as intercepts)
   real<lower=0> kappa; // scale parameter for beta regression
 }
@@ -61,12 +62,12 @@ transformed parameters {
   
   // drop the intercepts so everything is relative to the cutpoints
   if(N_degen>0) {
-    calc_degen = covar_degen*X_beta;
+    calc_degen = alpha + covar_degen*X_beta;
   }
   
   //print(calc_degen[1:10]);
   
-  calc_prop = covar_prop*X_beta;
+  calc_prop = alpha + covar_prop*X_beta;
   
   //print(calc_prop[1:10]);
   
@@ -75,6 +76,7 @@ model {
   
   // vague priors
   X_beta ~ normal(0,5);
+  alpha ~ normal(0,5);
   kappa ~ exponential(.1);
   //cutpoints[2] - cutpoints[1] ~ normal(0,3);
   // induced dirichlet prior on cutpoints:
