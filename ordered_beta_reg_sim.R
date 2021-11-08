@@ -294,10 +294,12 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
                                     refresh=0,chains=1,parallel_chains=1,iter_warmup=500,
                                 iter_sampling=500))
   
+  X_brms <- X
+  colnames(X_brms) <- paste0(rep("Var",ncol(X)),1:ncol(X))
+  X_brms <- as_tibble(X_brms)
   
-  
-  betareg_fit <- try(brm(formula = outcome~X,data=tibble(outcome=final_out_scale,
-                                                              X=X),
+  betareg_fit <- try(brm(formula = outcome~.,data=mutate(X_brms,
+                                                         outcome=final_out_scale),
                      chains=1,cores=1,iter=1000,
                               seed=r_seeds[3],
                      silent=0,refresh=0,
@@ -305,8 +307,11 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
                      prior=set_prior("normal(0,5)", class = "b"),
                      backend='cmdstanr'))
   
-  betareg_fit2 <- try(update(betareg_fit,newdata=tibble(outcome=final_out[final_out>0 & final_out<1],
-                                                        X=X[final_out>0 & final_out<1,]),
+  X_brms_small <- filter(X_brms, final_out>0 & final_out<1)
+  
+  X_brms_small$outcome <- final_out[final_out>0 & final_out<1]
+  
+  betareg_fit2 <- try(update(betareg_fit,newdata=X_brms_small,
                              chains=1,cores=1,iter=1000,
                              seed=r_seeds[4],
                              silent=0,refresh=0,
@@ -376,8 +381,8 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
   
   X_beta_ord <- as_draws_matrix(fit_model$draws("X_beta"))
   X_beta_zoib <- as_draws_matrix(zoib_fit$draws("coef_m"))
-  X_beta_reg <- as.matrix(betareg_fit,pars="X")
-  X_beta_reg2 <- as.matrix(betareg_fit2,pars="X")
+  X_beta_reg <- as.matrix(betareg_fit,pars=paste0("Var",1:this_data$k))
+  X_beta_reg2 <- as.matrix(betareg_fit2,pars=paste0("Var",1:this_data$k))
   X_beta_lm <- as.matrix(lm_fit,pars="X")
   X_beta_frac <- as_draws_matrix(frac_fit$draws(variables="X_beta"))
   
@@ -486,8 +491,8 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
     X_high[,tk] <- X[,tk] + setstep(X[,tk]) 
     
     tibble(marg_eff= sapply(1:nrow(X_beta_reg), function(i) {
-      y0 <- plogis(betareg_int[i,"b_Intercept"] + X_low*X_beta_reg[i,])
-      y1 <- plogis(betareg_int[i,"b_Intercept"] + X_high*X_beta_reg[i,])
+      y0 <- plogis(betareg_int[i,"b_Intercept"] + X_low%*%X_beta_reg[i,])
+      y1 <- plogis(betareg_int[i,"b_Intercept"] + X_high%*%X_beta_reg[i,])
       
       marg_eff <- (y1-y0)/(X_high[,tk]-X_low[,tk])
       
@@ -505,8 +510,8 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
     X_high[,tk] <- X[,tk] + setstep(X[,tk]) 
     
     tibble(marg_eff= sapply(1:nrow(X_beta_reg), function(i) {
-      y0 <- plogis(betareg2_int[i,"b_Intercept"] + X_low*X_beta_reg[i,])
-      y1 <- plogis(betareg2_int[i,"b_Intercept"] + X_high*X_beta_reg[i,])
+      y0 <- plogis(betareg2_int[i,"b_Intercept"] + X_low%*%X_beta_reg2[i,])
+      y1 <- plogis(betareg2_int[i,"b_Intercept"] + X_high%*%X_beta_reg2[i,])
       
       marg_eff <- (y1-y0)/(X_high[,tk]-X_low[,tk])
       
@@ -527,8 +532,8 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
     X_high[,tk] <- X[,tk] + setstep(X[,tk]) 
     
     tibble(marg_eff= sapply(1:nrow(X_beta_frac), function(i) {
-      y0 <- plogis(c(frac_int[i,]) + X_low*c(X_beta_frac[i,]))
-      y1 <- plogis(c(frac_int[i,]) + X_high*c(X_beta_frac[i,]))
+      y0 <- plogis(c(frac_int[i,]) + X_low%*%X_beta_frac[i,,drop=T])
+      y1 <- plogis(c(frac_int[i,]) + X_high%*%X_beta_frac[i,,drop=T])
       
       marg_eff <- (y1-y0)/(X_high[,tk]-X_low[,tk])
       

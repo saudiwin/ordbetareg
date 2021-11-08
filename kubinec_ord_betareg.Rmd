@@ -342,24 +342,31 @@ all_sim_calc <- all_sim %>%
 
 As a result, even without looking at empirical examples, it is difficult to recommend OLS, fractional logit or transformed continuous outcomes as a general approach for analyzing this type of data. Fractional logit and OLS perform reasonably at recovering marginal effects, but they suffer when distributions become multi-modal. Transformation of the outcome to the $[0,1]$ interval is also clearly not a harmless strategy as it dramatically changes the estimated marginal effects. Throwing away discrete outcomes can likewise affect parameter estimates even though the continuous outcomes are predicted by the same linear model as the discrete outcomes.
 
-```{r lookurt,fig.cap="Comparison of $\\hat{elpd}_{psis_loo}$ by Sample Kurtosis Values", message=F, include=F}
+```{r lookurt,fig.cap="Bias in Estimates As a Function of Sample Size", message=F}
+
+require(ggthemes)
 
 all_sim %>%
-  select(model,loo_val,true_kurt) %>% 
-  filter(model %in% c("OLS","Ordinal Beta Regression")) %>% 
-  ggplot(aes(y=loo_val,x=true_kurt)) +
+  mutate(s_err=sign(marg_eff)!=sign(marg_eff_est),
+            m_err=abs(marg_eff_est)/abs(marg_eff)) %>% 
+  mutate(Power=as.numeric(ifelse(sign(marg_eff)==sign(high) & sign(marg_eff)==sign(low),
+                                 1,
+                                 0))) %>% 
+  select(`Proportion S Errors`="s_err",N,Power,
+         `M Errors`="m_err",Variance="var_marg",model) %>% 
+  gather(key = "type",value="estimate",-model,-N) %>% 
+  filter(!is.na(model)) %>% 
+  filter(model %in% c("OLS","Ordinal Beta Regression",'ZOIB')) %>% 
+  ggplot(aes(y=estimate,x=N)) +
   #geom_point(aes(colour=model),alpha=0.1) +
   stat_smooth(aes(colour=model,linetype=model),method="gam",formula = y ~ s(x, bs = "cs")) + 
-  ylab(TeX("$\\hat{elpd}_{psis_loo}$")) +
-  xlab("Sample Kurtosis") +
-  labs(caption="Dotted line indicates Gaussian kurtosis of 3.") +
+  ylab("") +
+  xlab("N") +
+  facet_wrap(~type,scales="free_y",ncol = 2) +
+  labs(caption=stringr::str_wrap("Summary smooth calculated via generalized additive model. M Errors  and S errors are magnitude of bias and incorrect sign of the estimated marginal effect. Variance refers to estimated posterior variance (uncertainty) of the marginal effect.",length=80)) +
   guides(color=guide_legend(title=""),
          linetype=guide_legend(title="")) +
-  theme(legend.position = "top",
-        panel.grid = element_blank(),
-        panel.background = element_blank()) +
-  geom_vline(xintercept=3, linetype=3) +
-  scale_x_log10()
+  theme_tufte()
 
 ```
 
