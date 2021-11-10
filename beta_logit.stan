@@ -123,7 +123,7 @@ generated quantities {
     for(i in 1:num_elements(indices_degen)) {
       
       // draw an outcome 0 / prop / 1
-      regen_degen[i] = ordered_logistic_rng(covar_degen[indices_degen[i],]*X_beta,cutpoints);
+      regen_degen[i] = ordered_logistic_rng(alpha + covar_degen[indices_degen[i],]*X_beta,cutpoints);
       
       if(outcome_degen[i]==0) {
         ord_log[i] = log1m_inv_logit(calc_degen[i] - cutpoints[1]);
@@ -158,7 +158,7 @@ generated quantities {
         log_inv_logit(calc_prop[i] - cutpoints[2])];
         
         // draw an outcome 0 / prop / 1
-        regen_degen[i+skip] = ordered_logistic_rng(covar_prop[indices_prop[i],]*X_beta,cutpoints);
+        regen_degen[i+skip] = ordered_logistic_rng(alpha + covar_prop[indices_prop[i],]*X_beta,cutpoints);
         
         ord_log[i+skip] = log(inv_logit(calc_prop[indices_prop[i]] - cutpoints[1]) - inv_logit(calc_prop[indices_prop[i]] - cutpoints[2])) +
                         beta_proportion_lpdf(outcome_prop[indices_prop[i]]|inv_logit(calc_prop[indices_prop[i]]),kappa);
