@@ -142,7 +142,7 @@ generated quantities {
         regen_all[i] = 1;
       } else {
         // did not occur in original data but could re-occur probabilistically
-        regen_all[i] = beta_proportion_rng(inv_logit(covar_degen[indices_degen[i],]*X_beta),kappa);
+        regen_all[i] = beta_proportion_rng(inv_logit(alpha + covar_degen[indices_degen[i],]*X_beta),kappa);
       }
      }
     }
@@ -169,7 +169,7 @@ generated quantities {
           regen_all[i+skip] = 1;
         } else {
           // did not occur in original data but could re-occur probabilistically
-          regen_all[i+skip] = beta_proportion_rng(inv_logit(covar_prop[indices_prop[i],]*X_beta),kappa);
+          regen_all[i+skip] = beta_proportion_rng(inv_logit(alpha + covar_prop[indices_prop[i],]*X_beta),kappa);
         }
         
       } 

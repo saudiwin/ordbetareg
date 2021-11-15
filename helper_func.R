@@ -15,10 +15,11 @@ setstep <- function(x) {
 
 predict_ordbeta <- function(cutpoints=NULL,X=NULL,
                             X_miss=NULL,X_beta=NULL,X_beta_miss=NULL,
+                            alpha=NULL,
                             combined_out=T) {
   
   # we'll assume the same eta was used to generate outcomes
-  eta <- X %*% as.matrix(X_beta)
+  eta <- X %*% as.matrix(X_beta) + alpha
   
   # probabilities for three possible categories (0, proportion, 1)
   
