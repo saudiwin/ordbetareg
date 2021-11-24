@@ -26,10 +26,8 @@ frac_mod <- cmdstanr::cmdstan_model("frac_logit.stan")
 set.seed(772235)
 
 # let's do some simulations
-  
-N_rep <- 4000
 
-simul_data <- tibble(N=c(25,50,75,seq(100,3000,by=200))) %>% 
+simul_data <- tibble(N=rep(c(25,50,75,seq(100,3000,by=200)),each=100)) %>% 
                      mutate(k=5,
                      rho=.7,
                      phi=2,
