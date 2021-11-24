@@ -27,15 +27,15 @@ set.seed(772235)
 
 # let's do some simulations
   
-N_rep <- 6600
+N_rep <- 4000
 
-simul_data <- tibble(N=c(25,50,75,seq(100,3000,by=100))) %>% 
+simul_data <- tibble(N=c(25,50,75,seq(100,3000,by=200))) %>% 
                      mutate(k=5,
                      rho=.7,
                      phi=2,
                      cutpoints1=-3) %>% 
   mutate(cutpoints2=2,
-         X_beta=c(-1,1,-1,1,-1))
+         X_beta=list(c(-1,1,-1,1,-1)))
 
 # we can also use it to calculate "true" marginal effect of X on Y using code from margins package
 # i.e., numerical differentiation
@@ -122,7 +122,7 @@ gen_x <- function(k,rho,N_rep) {
 
 r_seeds <- c(6635,2216,8845,9936,3321,63914)
 
-plan(multicore,workers=40)
+plan(multicore,workers=1)
 
 all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
 #all_simul_data <- lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
