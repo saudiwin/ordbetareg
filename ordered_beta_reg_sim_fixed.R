@@ -122,7 +122,7 @@ gen_x <- function(k,rho,N_rep) {
 
 r_seeds <- c(6635,2216,8845,9936,3321,63914)
 
-plan(multicore,workers=1)
+plan(multicore,workers=40)
 
 all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
 #all_simul_data <- lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
