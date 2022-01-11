@@ -26,6 +26,9 @@ require(bayesplot)
 require(patchwork)
 require(latex2exp)
 require(haven)
+require(ggthemes)
+require(forcats)
+require(ggplot2)
 
 knitr::opts_chunk$set(warning=F,message=F)
 
@@ -66,6 +69,71 @@ Given this likelihood, I can define a joint log posterior distribution over $y$ 
 \end{equation}
 ```
 where $\propto$ indicates that the posterior is calculated proportional to the normalizing constant, i.e., the denominator in Bayes' formula.
+
+# Simulation with Fixed Parameter Values
+
+The fixed simulation relative to the more thorough simulation presented in the main text shows that, for this particular set of parameter draws (five covariates with a $\rho_x$ of 0.5, $\phi$ of 2, $k_1$ of -3 and $k_2$ of 2), the ZOIB shows somewhat less variance than ordered beta regression but at the cost of very high M-errors. The average ZOIB coefficient magnitude isless than one-half that of ordered beta regression, which is a worrying level of bias admitted for a small reduction in variance. This simulation also shows that fractional logit regression has relatively high variance, as is also seen in the empirical example. The Beta regression on transformed values and only continuous responses show high M errors and very low variance, suggesting that again that these data-driven fixes can cause severe distortions in estimating marginal effects.
+
+```{r fixsim,echo=F}
+
+#all_sim_fixed <- readRDS("data/sim_cont_X_fixed.rds")
+load("data/sim_cont_X_fixed.RData")
+checkc <- sapply(all_sim_fixed, class)
+all_sim_fixed <- all_sim_fixed[checkc!='try-error']
+all_sim_fixed <- bind_rows(all_sim_fixed) %>% 
+  unchop(c("med_est","X_beta","marg_eff","high","low","var_calc",
+           'marg_eff_est','high_marg','low_marg','var_marg'))
+
+my_conf_fun <- function(x) {
+  if(all(x>=0 & x<=1)) {
+    # use binomial confidence intervals
+    bi_ci <- binom::binom.bayes(sum(x,na.rm=T),length(x))
+    return(list(y=bi_ci$mean,
+                  ymin=bi_ci$lower,
+                  ymax=bi_ci$upper))
+  } else {
+    boot_ci <- Hmisc::smean.cl.boot(x)
+    return(list(y=boot_ci["Mean"],
+                  ymin=boot_ci["Lower"],
+                  ymax=boot_ci["Upper"]))
+  }
+}
+
+
+all_sim_fixed %>%
+  mutate(s_err=sign(marg_eff)!=sign(marg_eff_est),
+            m_err=abs(marg_eff_est)/abs(marg_eff)) %>% 
+  mutate(Power=as.numeric(ifelse(sign(marg_eff)==sign(high) & sign(marg_eff)==sign(low),
+                                 1,
+                                 0))) %>% 
+  select(`Proportion S Errors`="s_err",N,Power,
+         `M Errors`="m_err",Variance="var_marg",model) %>% 
+  gather(key = "type",value="estimate",-model,-N) %>% 
+  mutate(N=ifelse(N<100, 100, N)) %>% 
+  filter(!is.na(model)) %>% 
+  # filter(model %in% c("OLS","Ordinal Beta Regression",'ZOIB',"Fractional")) %>% 
+  # group_by(N,model,type) %>% 
+  # summarize(med_est=mean(estimate),
+  #           low_est=quantile(estimate,.05),
+  #           high_est=quantile(estimate,.95)) %>% 
+  ggplot(aes(y=estimate,x=N)) +
+  #geom_point(aes(colour=model),alpha=0.1) +
+   stat_summary(fun.data="mean_cl_boot",aes(colour=model,
+                                            shape=model),
+                size=.5,fatten=1.5,
+                position=position_dodge(width=0.5))   + 
+  ylab("") +
+  xlab("N") +
+  facet_wrap(~type,scales="free_y",ncol = 2) +
+  scale_color_viridis_d() +
+  #scale_y_log10() +
+  labs(caption=stringr::str_wrap("Summary statistics for each value of N calculated via bootstrapping. M Errors  and S errors are magnitude of bias and incorrect sign of the estimated marginal effect. Variance refers to estimated posterior variance (uncertainty) of the marginal effect.",width=80)) +
+  guides(color=guide_legend(title=""),
+         shape=guide_legend(title="")) +
+  theme_tufte()
+
+```
+
 
 # Models Without Degenerate Responses
 
@@ -170,282 +238,282 @@ We can see from the model results that our coefficient `X_beta` was estimated wi
 ppc_dens_overlay(final_out,as_draws_matrix(fit_model$draws("regen_all")))
 ```
 
-# Phi (Dispersion) Regression
+<!-- # Phi (Dispersion) Regression -->
 
-Figure \@ref(fig:phireg) shows the effect of covariates on $\phi$, or the dispersion/scale parameter in an ordered Beta regression. Higher values of $\phi$ indicate that respondents tend to cluster together in their views; lower values imply respondents tend to move towards the extremes in opposite directions. As can be seen, the effects of predictors on $\phi$ are intriguing, as wealthier and more educated respondents are more likely to hold much more heterogeneous views, while poorer, less educated and more conservative respondents tend to cluster together. As this figure shows, a properly parameterized Beta regression model can provide fascinating insights about human behavior and opinion. For an OLS model, this type of distinction among respondents is impossible as a U-shape and a cluster (inverted-U shape) can have the same mean and variance.
+<!-- Figure \@ref(fig:phireg) shows the effect of covariates on $\phi$, or the dispersion/scale parameter in an ordered Beta regression. Higher values of $\phi$ indicate that respondents tend to cluster together in their views; lower values imply respondents tend to move towards the extremes in opposite directions. As can be seen, the effects of predictors on $\phi$ are intriguing, as wealthier and more educated respondents are more likely to hold much more heterogeneous views, while poorer, less educated and more conservative respondents tend to cluster together. As this figure shows, a properly parameterized Beta regression model can provide fascinating insights about human behavior and opinion. For an OLS model, this type of distinction among respondents is impossible as a U-shape and a cluster (inverted-U shape) can have the same mean and variance. -->
 
-```{r phiregset,fig.height=5,width=5,include=F}
+<!-- ```{r phiregset,fig.height=5,width=5,include=F} -->
 
-pew <- haven::read_sav("data/W28_Aug17/ATP W28.sav") %>% 
-  mutate(therm=na_if(THERMO_THERMBC_W28,999)) %>% 
-  filter(!is.na(therm))
+<!-- pew <- haven::read_sav("data/W28_Aug17/ATP W28.sav") %>%  -->
+<!--   mutate(therm=na_if(THERMO_THERMBC_W28,999)) %>%  -->
+<!--   filter(!is.na(therm)) -->
 
-# need a completed dataset with all of the covariates
+<!-- # need a completed dataset with all of the covariates -->
 
-  model_data <- select(pew,therm,age="F_AGECAT_FINAL",
-                        sex="F_SEX_FINAL",
-                        income="F_INCOME_FINAL",
-                        ideology="F_IDEO_FINAL",
-                        race="F_RACETHN_RECRUITMENT",
-                        education="F_EDUCCAT2_FINAL",
-                        approval="POL1DT_W28",
-                       born_again="F_BORN_FINAL",
-                       relig="F_RELIG_FINAL",
-                        news="NEWS_PLATFORMA_W28") %>% 
-    mutate_all(zap_missing) %>% 
-    drop_na %>% 
-  mutate(therm=(therm - min(therm,na.rm = T))/(max(therm,na.rm=T) - 
-                                                       min(therm,na.rm = T)),
-         therm_rescale=(therm * (sum(!is.na(therm))-1) + 0.5)/sum(!is.na(therm)),
-         news=as_factor(news,levels="labels"),
-         age=c(scale(age)),
-         race=as_factor(race,levels="labels"),
-         ideology=as_factor(ideology,levels="labels"),
-         income=as_factor(income,levels="labels"),
-         approval=as_factor(approval,levels="labels"),
-         sex=as_factor(sex,levels="labels"),
-         education=as_factor(education,levels="labels"),
-         born_again=as_factor(born_again,levels="labels"),
-         relig=as_factor(relig,levels="labels")) %>% 
-    mutate_at(c("race","ideology","income","approval","sex","education","born_again","relig"), function(c) {
-      factor(c, exclude=levels(c)[length(levels(c))])
-    }) %>% 
-    drop_na
+<!--   model_data <- select(pew,therm,age="F_AGECAT_FINAL", -->
+<!--                         sex="F_SEX_FINAL", -->
+<!--                         income="F_INCOME_FINAL", -->
+<!--                         ideology="F_IDEO_FINAL", -->
+<!--                         race="F_RACETHN_RECRUITMENT", -->
+<!--                         education="F_EDUCCAT2_FINAL", -->
+<!--                         approval="POL1DT_W28", -->
+<!--                        born_again="F_BORN_FINAL", -->
+<!--                        relig="F_RELIG_FINAL", -->
+<!--                         news="NEWS_PLATFORMA_W28") %>%  -->
+<!--     mutate_all(zap_missing) %>%  -->
+<!--     drop_na %>%  -->
+<!--   mutate(therm=(therm - min(therm,na.rm = T))/(max(therm,na.rm=T) -  -->
+<!--                                                        min(therm,na.rm = T)), -->
+<!--          therm_rescale=(therm * (sum(!is.na(therm))-1) + 0.5)/sum(!is.na(therm)), -->
+<!--          news=as_factor(news,levels="labels"), -->
+<!--          age=c(scale(age)), -->
+<!--          race=as_factor(race,levels="labels"), -->
+<!--          ideology=as_factor(ideology,levels="labels"), -->
+<!--          income=as_factor(income,levels="labels"), -->
+<!--          approval=as_factor(approval,levels="labels"), -->
+<!--          sex=as_factor(sex,levels="labels"), -->
+<!--          education=as_factor(education,levels="labels"), -->
+<!--          born_again=as_factor(born_again,levels="labels"), -->
+<!--          relig=as_factor(relig,levels="labels")) %>%  -->
+<!--     mutate_at(c("race","ideology","income","approval","sex","education","born_again","relig"), function(c) { -->
+<!--       factor(c, exclude=levels(c)[length(levels(c))]) -->
+<!--     }) %>%  -->
+<!--     drop_na -->
 
-  model_data_prop <- filter(model_data,therm>0,therm<1)
-  model_data_degen <- filter(model_data,therm==0|therm==1)
-  
-  X_prop <- model.matrix(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data_prop)[,-1]
-  # don't drop the intercept for the inflation model
-  X_prop_miss <- model.matrix(therm~education + news,data=model_data_prop)
-  X_degen_miss <- model.matrix(therm~education + news,data=model_data_degen)
-  X_prop_phi <- model.matrix(therm~ideology+ age,data=model_data_prop)
-  X_degen_phi <- model.matrix(therm~ideology + age,data=model_data_degen)
-  X_degen <- model.matrix(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data_degen)[,-1]
+<!--   model_data_prop <- filter(model_data,therm>0,therm<1) -->
+<!--   model_data_degen <- filter(model_data,therm==0|therm==1) -->
 
-  to_bl <- list(N_degen=nrow(model_data_degen),
-                N_prop=nrow(model_data_prop),
-                X=ncol(X_prop),
-                X_miss=0,
-                infl_value=-1,
-                outcome_prop=model_data_prop$therm,
-                outcome_degen=model_data_degen$therm,
-                covar_prop=X_prop,
-                covar_degen=X_degen,
-                covar_prop_infl=array(0,dim=c(nrow(model_data_prop),0)),
-                covar_degen_infl=array(0,dim=c(nrow(model_data_degen),0)),
-                N_pred_degen=nrow(model_data_degen),
-                N_pred_prop=nrow(model_data_prop),
-                indices_degen=1:nrow(model_data_degen),
-                indices_prop=1:nrow(model_data_prop),
-                run_gen=1)
+<!--   X_prop <- model.matrix(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data_prop)[,-1] -->
+<!--   # don't drop the intercept for the inflation model -->
+<!--   X_prop_miss <- model.matrix(therm~education + news,data=model_data_prop) -->
+<!--   X_degen_miss <- model.matrix(therm~education + news,data=model_data_degen) -->
+<!--   X_prop_phi <- model.matrix(therm~ideology+ age,data=model_data_prop) -->
+<!--   X_degen_phi <- model.matrix(therm~ideology + age,data=model_data_degen) -->
+<!--   X_degen <- model.matrix(therm~race+sex+income+ideology+approval+age+education+born_again+relig,data=model_data_degen)[,-1] -->
 
-run_model <- T
+<!--   to_bl <- list(N_degen=nrow(model_data_degen), -->
+<!--                 N_prop=nrow(model_data_prop), -->
+<!--                 X=ncol(X_prop), -->
+<!--                 X_miss=0, -->
+<!--                 infl_value=-1, -->
+<!--                 outcome_prop=model_data_prop$therm, -->
+<!--                 outcome_degen=model_data_degen$therm, -->
+<!--                 covar_prop=X_prop, -->
+<!--                 covar_degen=X_degen, -->
+<!--                 covar_prop_infl=array(0,dim=c(nrow(model_data_prop),0)), -->
+<!--                 covar_degen_infl=array(0,dim=c(nrow(model_data_degen),0)), -->
+<!--                 N_pred_degen=nrow(model_data_degen), -->
+<!--                 N_pred_prop=nrow(model_data_prop), -->
+<!--                 indices_degen=1:nrow(model_data_degen), -->
+<!--                 indices_prop=1:nrow(model_data_prop), -->
+<!--                 run_gen=1) -->
 
-  to_bl_infl <- list(N_degen=nrow(model_data_degen),
-                N_prop=nrow(model_data_prop),
-                X=ncol(X_prop),
-                X_miss=ncol(X_prop_miss),
-                infl_value=0.5,
-                outcome_prop=model_data_prop$therm,
-                outcome_degen=model_data_degen$therm,
-                covar_prop=X_prop,
-                covar_degen=X_degen,
-                covar_prop_infl=X_prop_miss,
-                covar_degen_infl=X_degen_miss,
-                N_pred_degen=nrow(model_data_degen),
-                N_pred_prop=nrow(model_data_prop),
-                indices_degen=1:nrow(model_data_degen),
-                indices_prop=1:nrow(model_data_prop),
-                run_gen=1)
-  
-  
-  if(run_model) {
-    fit_pew_infl <- ord_Beta_mod_infl$sample(iter_warmup = 500,
-                                             iter_sampling=500,
-                        seed=random_seed,
-                        data=to_bl_infl,parallel_chains=2,cores=2)
-  
-    saveRDS(fit_pew_infl,"data/fit_pew_infl.rds")
-  } else {
-    fit_pew_infl <- readRDS("data/fit_pew_infl.rds")
-  }
-  
-  # finally try phireg model
-  
-  to_bl_phireg <- list(N_degen=nrow(model_data_degen),
-                N_prop=nrow(model_data_prop),
-                X=ncol(X_prop),
-                X_miss=ncol(X_prop_miss),
-                X_phi=ncol(X_prop_phi),
-                infl_value=0.5,
-                outcome_prop=model_data_prop$therm,
-                outcome_degen=model_data_degen$therm,
-                covar_prop=X_prop,
-                covar_degen=X_degen,
-                covar_prop_phi=X_prop_phi,
-                covar_degen_phi=X_degen_phi,
-                N_pred_degen=nrow(model_data_degen),
-                N_pred_prop=nrow(model_data_prop),
-                indices_degen=1:nrow(model_data_degen),
-                indices_prop=1:nrow(model_data_prop),
-                run_gen=1)
-  
-  
-  if(run_model) {
-    fit_pew_phireg <- ord_Beta_mod_phi$sample( 
-                        seed=random_seed,
-                        data=to_bl_phireg,parallel_chains=2,cores=2,
-                        iter_warmup=500,
-                        iter_sampling = 500)
-  
-    fit_pew_phireg$save_object("data/fit_pew_phireg.rds")
-  } else {
-    fit_pew_phireg <- readRDS("data/fit_pew_phireg.rds")
-  }
+<!-- run_model <- T -->
 
-  cutpoints_est_phi <- as_draws_matrix(fit_pew_phireg$draws("cutpoints"))
-  X_beta_ord_phi <- as_draws_matrix(fit_pew_phireg$draws("X_beta"))
-  yrep_ord_phi <- as_draws_matrix(fit_pew_phireg$draws("regen_all"))
-  
-  cutpoints_est_infl <- as_draws_matrix(fit_pew_infl$draws("cutpoints"))
-  X_beta_ord_infl <- as_draws_matrix(fit_pew_infl$draws("X_beta"))
-  yrep_ord_infl <- as_draws_matrix(fit_pew_infl$draws("regen_all"))
-  
-# iterate over columns to get marginal effects
-# first for phi reg
+<!--   to_bl_infl <- list(N_degen=nrow(model_data_degen), -->
+<!--                 N_prop=nrow(model_data_prop), -->
+<!--                 X=ncol(X_prop), -->
+<!--                 X_miss=ncol(X_prop_miss), -->
+<!--                 infl_value=0.5, -->
+<!--                 outcome_prop=model_data_prop$therm, -->
+<!--                 outcome_degen=model_data_degen$therm, -->
+<!--                 covar_prop=X_prop, -->
+<!--                 covar_degen=X_degen, -->
+<!--                 covar_prop_infl=X_prop_miss, -->
+<!--                 covar_degen_infl=X_degen_miss, -->
+<!--                 N_pred_degen=nrow(model_data_degen), -->
+<!--                 N_pred_prop=nrow(model_data_prop), -->
+<!--                 indices_degen=1:nrow(model_data_degen), -->
+<!--                 indices_prop=1:nrow(model_data_prop), -->
+<!--                 run_gen=1) -->
 
-mat_data <- rbind(X_degen,X_prop)
 
-all_vars_ord_phi <- parallel::mclapply(1:ncol(mat_data),function(c) {
-  
-  if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) {
-    pred_data_high <- mat_data
-    
-    pred_data_high[,c] <- 0
-    
-    pred_data_low <- mat_data
-    
-    pred_data_low[,c] <- 1
-  } else {
-    pred_data_high <- mat_data
-    
-    pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c])
-    
-    pred_data_low <- mat_data
-    
-    pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c])
-  }
-  
-  
-  
-  margin_ord <- sapply(1:nrow(X_beta_ord_phi), function(i,this_col) {
-    y0 <- predict_ordbeta(cutpoints=cutpoints_est_phi[i,],
-                          X=pred_data_low,
-                          X_beta=t(X_beta_ord_phi[i,]))
-    
-    y1 <- predict_ordbeta(cutpoints=cutpoints_est_phi[i,],
-                          X=pred_data_high,
-                          X_beta=t(X_beta_ord_phi[i,]))
-    
-    marg_eff <- (y1-y0)/(pred_data_high[,this_col]-pred_data_low[,this_col])
-    
-    mean(marg_eff)
-  },c)
-  
-  tibble(marg=margin_ord,variable=colnames(mat_data)[c])
-},mc.cores=3) %>% bind_rows
+<!--   if(run_model) { -->
+<!--     fit_pew_infl <- ord_Beta_mod_infl$sample(iter_warmup = 500, -->
+<!--                                              iter_sampling=500, -->
+<!--                         seed=random_seed, -->
+<!--                         data=to_bl_infl,parallel_chains=2,cores=2) -->
 
-recode_marg_phi <- all_vars_ord_phi %>% 
-  mutate(variable=recode(variable,
-                         `raceBlack non-Hispanic`="Black",
-         `raceHispanic`="Hispanic",
-         `raceOther`="Other Race",
-         `sexFemale`="Female",
-         `income10 to under $20,000`="$10k - $20k",
-         `income20 to under $30,000`="$20k - $30k",
-         `income30 to under $40,000`="$30k - $40k",
-         `income40 to under $50,000`="$40k - $50k",
-         `income50 to under $75,000`="$50k - $75k",
-         `income75 to under $100,000`="$75k - $100k",
-         `income100 to under $150,000 [OR]`="$100k - $150k",
-         `income$150,000 or more`="> $150k",
-         `ideologyConservative`="Conservative",
-         `ideologyModerate`="Moderate",
-         `ideologyLiberal`="Liberal",
-         `ideologyVery liberal`="Very Liberal",
-         `approvalDisapprove`="Disapprove Trump",
-         age="Age",
-         `educationSome college, no degree`="Some College",
-         `educationHigh school graduate`="H.S. Graduate",
-         `educationAssociate’s degree`="Associate's",
-         `educationCollege graduate/some postgrad`="College Grad",
-         `educationPostgraduate`="Postgraduate",
-         `born_againNo, not born-again or evangelical Christian`="Born Again",
-         `religRoman Catholic`="Roman Catholic",
-         `religMormon (Church of Jesus Christ of Latter-day Saints or LDS)`="Mormon",
-         `religOrthodox (such as Greek, Russian, or some other Orthodox church)`="Orthodox",
-         `religSomething else, Specify:`="Other Religion"),
-         variable=factor(variable,levels=c("Conservative",
-                                           "Moderate",
-                                           "Liberal",
-                                           "Very Liberal",
-                                           "Disapprove Trump",
-                                           "Age",
-                                           "Female",
-                                           "Black",
-                                           "Hispanic",
-                                           "Other Race",
-                                           "H.S. Graduate",
-                                           "Some College",
-                                           "Associate's",
-                                           "College Grad",
-                                           "Postgraduate",
-                                           "Born Again",
-                                           "Roman Catholic",
-                                           "Mormon",
-                                           "Orthodox",
-                                           "Other Religion",
-                                           "$10k - $20k",
-                                           "$20k - $30k",
-                                           "$30k - $40k",
-                                           "$40k - $50k",
-                                           "$50k - $75k",
-                                           "$75k - $100k",
-                                           "$100k - $150k",
-                                           "> $150k")),
-         group_list=forcats::fct_collapse(variable,
-                                          `Ideology\nBaseline=Very\nConservative`=c("Conservative",
-                                           "Moderate",
-                                           "Liberal",
-                                           "Very Liberal",
-                                           "Disapprove Trump"),
-                                          Demographics=c("Age",
-                                           "Female",
-                                           "Black",
-                                           "Hispanic",
-                                           "Other Race"),
-                                          `Education\nBaseline=Less Than H.S.`=c("Some College",
-                                           "H.S. Graduate",
-                                           "Associate's",
-                                           "College Grad",
-                                           "Postgraduate"),
-                                          `Religion\nBaseline=Protestant`=c("Born Again",
-                                           "Roman Catholic",
-                                           "Mormon",
-                                           "Orthodox",
-                                           "Other Religion"),
-                                          `Income\nBaseline= <$10k`=c("$10k - $20k",
-                                           "$20k - $30k",
-                                           "$30k - $40k",
-                                           "$40k - $50k",
-                                           "$50k - $75k",
-                                           "$75k - $100k",
-                                           "$100k - $150k",
-                                           "> $150k")))
-```
+<!--     saveRDS(fit_pew_infl,"data/fit_pew_infl.rds") -->
+<!--   } else { -->
+<!--     fit_pew_infl <- readRDS("data/fit_pew_infl.rds") -->
+<!--   } -->
 
-```{r phireg,echo=F,fig.cap="Effects of Covariates on Thermometer Dispersion (Extreme Responses)"}
+<!--   # finally try phireg model -->
+
+<!--   to_bl_phireg <- list(N_degen=nrow(model_data_degen), -->
+<!--                 N_prop=nrow(model_data_prop), -->
+<!--                 X=ncol(X_prop), -->
+<!--                 X_miss=ncol(X_prop_miss), -->
+<!--                 X_phi=ncol(X_prop_phi), -->
+<!--                 infl_value=0.5, -->
+<!--                 outcome_prop=model_data_prop$therm, -->
+<!--                 outcome_degen=model_data_degen$therm, -->
+<!--                 covar_prop=X_prop, -->
+<!--                 covar_degen=X_degen, -->
+<!--                 covar_prop_phi=X_prop_phi, -->
+<!--                 covar_degen_phi=X_degen_phi, -->
+<!--                 N_pred_degen=nrow(model_data_degen), -->
+<!--                 N_pred_prop=nrow(model_data_prop), -->
+<!--                 indices_degen=1:nrow(model_data_degen), -->
+<!--                 indices_prop=1:nrow(model_data_prop), -->
+<!--                 run_gen=1) -->
+
+
+<!--   if(run_model) { -->
+<!--     fit_pew_phireg <- ord_Beta_mod_phi$sample(  -->
+<!--                         seed=random_seed, -->
+<!--                         data=to_bl_phireg,parallel_chains=2,cores=2, -->
+<!--                         iter_warmup=500, -->
+<!--                         iter_sampling = 500) -->
+
+<!--     fit_pew_phireg$save_object("data/fit_pew_phireg.rds") -->
+<!--   } else { -->
+<!--     fit_pew_phireg <- readRDS("data/fit_pew_phireg.rds") -->
+<!--   } -->
+
+<!--   cutpoints_est_phi <- as_draws_matrix(fit_pew_phireg$draws("cutpoints")) -->
+<!--   X_beta_ord_phi <- as_draws_matrix(fit_pew_phireg$draws("X_beta")) -->
+<!--   yrep_ord_phi <- as_draws_matrix(fit_pew_phireg$draws("regen_all")) -->
+
+<!--   cutpoints_est_infl <- as_draws_matrix(fit_pew_infl$draws("cutpoints")) -->
+<!--   X_beta_ord_infl <- as_draws_matrix(fit_pew_infl$draws("X_beta")) -->
+<!--   yrep_ord_infl <- as_draws_matrix(fit_pew_infl$draws("regen_all")) -->
+
+<!-- # iterate over columns to get marginal effects -->
+<!-- # first for phi reg -->
+
+<!-- mat_data <- rbind(X_degen,X_prop) -->
+
+<!-- all_vars_ord_phi <- parallel::mclapply(1:ncol(mat_data),function(c) { -->
+
+<!--   if(all(mat_data[!is.na(mat_data[,c]),c] %in% c(0,1))) { -->
+<!--     pred_data_high <- mat_data -->
+
+<!--     pred_data_high[,c] <- 0 -->
+
+<!--     pred_data_low <- mat_data -->
+
+<!--     pred_data_low[,c] <- 1 -->
+<!--   } else { -->
+<!--     pred_data_high <- mat_data -->
+
+<!--     pred_data_high[,c] <- pred_data_high[,c] + setstep(pred_data_high[,c]) -->
+
+<!--     pred_data_low <- mat_data -->
+
+<!--     pred_data_low[,c] <- pred_data_low[,c] - setstep(pred_data_low[,c]) -->
+<!--   } -->
+
+
+
+<!--   margin_ord <- sapply(1:nrow(X_beta_ord_phi), function(i,this_col) { -->
+<!--     y0 <- predict_ordbeta(cutpoints=cutpoints_est_phi[i,], -->
+<!--                           X=pred_data_low, -->
+<!--                           X_beta=t(X_beta_ord_phi[i,])) -->
+
+<!--     y1 <- predict_ordbeta(cutpoints=cutpoints_est_phi[i,], -->
+<!--                           X=pred_data_high, -->
+<!--                           X_beta=t(X_beta_ord_phi[i,])) -->
+
+<!--     marg_eff <- (y1-y0)/(pred_data_high[,this_col]-pred_data_low[,this_col]) -->
+
+<!--     mean(marg_eff) -->
+<!--   },c) -->
+
+<!--   tibble(marg=margin_ord,variable=colnames(mat_data)[c]) -->
+<!-- },mc.cores=3) %>% bind_rows -->
+
+<!-- recode_marg_phi <- all_vars_ord_phi %>%  -->
+<!--   mutate(variable=recode(variable, -->
+<!--                          `raceBlack non-Hispanic`="Black", -->
+<!--          `raceHispanic`="Hispanic", -->
+<!--          `raceOther`="Other Race", -->
+<!--          `sexFemale`="Female", -->
+<!--          `income10 to under $20,000`="$10k - $20k", -->
+<!--          `income20 to under $30,000`="$20k - $30k", -->
+<!--          `income30 to under $40,000`="$30k - $40k", -->
+<!--          `income40 to under $50,000`="$40k - $50k", -->
+<!--          `income50 to under $75,000`="$50k - $75k", -->
+<!--          `income75 to under $100,000`="$75k - $100k", -->
+<!--          `income100 to under $150,000 [OR]`="$100k - $150k", -->
+<!--          `income$150,000 or more`="> $150k", -->
+<!--          `ideologyConservative`="Conservative", -->
+<!--          `ideologyModerate`="Moderate", -->
+<!--          `ideologyLiberal`="Liberal", -->
+<!--          `ideologyVery liberal`="Very Liberal", -->
+<!--          `approvalDisapprove`="Disapprove Trump", -->
+<!--          age="Age", -->
+<!--          `educationSome college, no degree`="Some College", -->
+<!--          `educationHigh school graduate`="H.S. Graduate", -->
+<!--          `educationAssociate’s degree`="Associate's", -->
+<!--          `educationCollege graduate/some postgrad`="College Grad", -->
+<!--          `educationPostgraduate`="Postgraduate", -->
+<!--          `born_againNo, not born-again or evangelical Christian`="Born Again", -->
+<!--          `religRoman Catholic`="Roman Catholic", -->
+<!--          `religMormon (Church of Jesus Christ of Latter-day Saints or LDS)`="Mormon", -->
+<!--          `religOrthodox (such as Greek, Russian, or some other Orthodox church)`="Orthodox", -->
+<!--          `religSomething else, Specify:`="Other Religion"), -->
+<!--          variable=factor(variable,levels=c("Conservative", -->
+<!--                                            "Moderate", -->
+<!--                                            "Liberal", -->
+<!--                                            "Very Liberal", -->
+<!--                                            "Disapprove Trump", -->
+<!--                                            "Age", -->
+<!--                                            "Female", -->
+<!--                                            "Black", -->
+<!--                                            "Hispanic", -->
+<!--                                            "Other Race", -->
+<!--                                            "H.S. Graduate", -->
+<!--                                            "Some College", -->
+<!--                                            "Associate's", -->
+<!--                                            "College Grad", -->
+<!--                                            "Postgraduate", -->
+<!--                                            "Born Again", -->
+<!--                                            "Roman Catholic", -->
+<!--                                            "Mormon", -->
+<!--                                            "Orthodox", -->
+<!--                                            "Other Religion", -->
+<!--                                            "$10k - $20k", -->
+<!--                                            "$20k - $30k", -->
+<!--                                            "$30k - $40k", -->
+<!--                                            "$40k - $50k", -->
+<!--                                            "$50k - $75k", -->
+<!--                                            "$75k - $100k", -->
+<!--                                            "$100k - $150k", -->
+<!--                                            "> $150k")), -->
+<!--          group_list=forcats::fct_collapse(variable, -->
+<!--                                           `Ideology\nBaseline=Very\nConservative`=c("Conservative", -->
+<!--                                            "Moderate", -->
+<!--                                            "Liberal", -->
+<!--                                            "Very Liberal", -->
+<!--                                            "Disapprove Trump"), -->
+<!--                                           Demographics=c("Age", -->
+<!--                                            "Female", -->
+<!--                                            "Black", -->
+<!--                                            "Hispanic", -->
+<!--                                            "Other Race"), -->
+<!--                                           `Education\nBaseline=Less Than H.S.`=c("Some College", -->
+<!--                                            "H.S. Graduate", -->
+<!--                                            "Associate's", -->
+<!--                                            "College Grad", -->
+<!--                                            "Postgraduate"), -->
+<!--                                           `Religion\nBaseline=Protestant`=c("Born Again", -->
+<!--                                            "Roman Catholic", -->
+<!--                                            "Mormon", -->
+<!--                                            "Orthodox", -->
+<!--                                            "Other Religion"), -->
+<!--                                           `Income\nBaseline= <$10k`=c("$10k - $20k", -->
+<!--                                            "$20k - $30k", -->
+<!--                                            "$30k - $40k", -->
+<!--                                            "$40k - $50k", -->
+<!--                                            "$50k - $75k", -->
+<!--                                            "$75k - $100k", -->
+<!--                                            "$100k - $150k", -->
+<!--                                            "> $150k"))) -->
+<!-- ``` -->
+
+```{r phireg,echo=F,fig.cap="Effects of Covariates on Thermometer Dispersion (Extreme Responses)",eval=F}
 
   recode_marg_phi %>% 
     group_by(variable,group_list) %>% 

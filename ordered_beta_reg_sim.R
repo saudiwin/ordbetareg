@@ -664,3 +664,5 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
 #simul_data_final <- bind_rows(all_simul_data)
 
 saveRDS(all_simul_data,"data/sim_cont_X.rds")
+all_sim <- all_simul_data
+save(all_sim, file="data/sim_cont_X.RData")

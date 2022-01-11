@@ -1,6 +1,8 @@
 data {
   int n;
   int k; // number of columns
+  int s; // number of samples (if not estimating predictions on all outcomes)
+  int sample_all[s];
   matrix[n,k] x; 
   vector<lower=0, upper=1>[n] y;
   int run_gen; // whether to use generated quantities
@@ -64,26 +66,25 @@ model {
   
 }
 generated quantities {
-  vector[run_gen==1 ? n: 0] zoib_log;
-  vector[run_gen==1 ? n: 0] zoib_regen;
-  vector[run_gen==1 ? n: 0] zoib_epred;
-  vector[run_gen==1 ? n: 0] is_discrete_regen;
+  vector[run_gen==1 ? s: 0] zoib_log;
+  vector[run_gen==1 ? s: 0] zoib_regen;
+  vector[run_gen==1 ? s: 0] zoib_epred;
+  vector[run_gen==1 ? s: 0] is_discrete_regen;
   
   if(run_gen==1) {
-    for (i in 1:n) {
+    for (i in 1:s) {
       
+      real psit = inv_logit(psi[sample_all[i]]);
+      real gammat = inv_logit(gamma[sample_all[i]]);
       
-      real psit = inv_logit(psi[i]);
-      real gammat = inv_logit(gamma[i]);
+      zoib_epred[i] = psit * gammat + (1-psit) * mu[sample_all[i]];
       
-      zoib_epred[i] = psit * gammat + (1-psit) * mu[i];
-      
-      if (y[i] == 0) {
+      if (y[sample_all[i]] == 0) {
         zoib_log[i] = log(psit) + log1m(gammat);
-      } else if (y[i] == 1) {
+      } else if (y[sample_all[i]] == 1) {
         zoib_log[i] = log(psit) + log(gammat);
       } else {
-        zoib_log[i] = log1m(psit) + beta_proportion_lpdf(y[i] | mu[i], phi);
+        zoib_log[i] = log1m(psit) + beta_proportion_lpdf(y[sample_all[i]] | mu[sample_all[i]], phi);
       }
       
       
@@ -91,7 +92,7 @@ generated quantities {
       is_discrete_regen[i] = bernoulli_rng(psit);
       
       if(is_discrete_regen[i]==0) {
-        zoib_regen[i] = beta_proportion_rng(mu[i], phi);
+        zoib_regen[i] = beta_proportion_rng(mu[sample_all[i]], phi);
       } else {
         zoib_regen[i] = bernoulli_rng(gammat);
       }

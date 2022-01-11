@@ -1,7 +1,7 @@
 ---
 title: "Ordered Beta Regression: A Parsimonious, Well-Fitting Model for Continuous Data with Lower and Upper Bounds"
 bibliography: BibTexDatabase.bib
-date: June 24th, 2021
+date: November 26, 2021
 geometry: margin=1in
 output: 
   bookdown::pdf_document2:
@@ -12,7 +12,7 @@ output:
 author: |
   | Robert Kubinec
   | New York University Abu Dhabi
-abstract: "I propose a new model, ordered Beta regression, for continuous distributions with both lower and upper bounds, such as data arising from survey slider scales, visual analog scales, and dose-response relationships. This model employs the cutpoint technique popularized by ordered logit to fit a single linear model to both continuous (0,1) and degenerate [0,1] responses. The model can be estimated with or without observations at the bounds, and as such is a general solution for this type of data. Employing a Monte Carlo simulation, I show that the model is noticeably more efficient than ordinary least squares regression, zero-one-inflated Beta regression, re-scaled Beta regression and fractional logit while fully capturing nuances in the outcome. I apply the model to a replication of the Aidt  and Jensen (2012) study of suffrage extensions in Europe. The model can be fit with the R package `brms` to facilitate hierarchical, dynamic and multivariate modeling.^[For a reproducible version of this paper, please see the Github repository https://github.com/saudiwin/ordBetareg. To see how to fit the model with R package `brms`, which includes a full range of regression model options including multilevel/hierarchical models, see the vignette available at https://htmlpreview.github.io/?https://github.com/saudiwin/ordBetareg/blob/master/estimate_with_brms.html. I thank Adam Slez, Stijn Masschelein, Jonas Kristoffer Lindeløv, Matti Vuorre and anonymous reviewers for helpful comments.]"
+abstract: "I propose a new model, ordered Beta regression, for continuous distributions with both lower and upper bounds, such as data arising from survey slider scales, visual analog scales, and dose-response relationships. This model employs the cutpoint technique popularized by ordered logit to fit a single linear model to both continuous (0,1) and degenerate [0,1] responses. The model can be estimated with or without observations at the bounds, and as such is a general solution for this type of data. Employing a Monte Carlo simulation, I show that the model is noticeably more efficient than ordinary least squares regression, zero-and-one-inflated Beta regression, re-scaled Beta regression and fractional logit while fully capturing nuances in the outcome. I apply the model to a replication of the Aidt  and Jensen (2012) study of suffrage extensions in Europe. The model can be fit with the R package `brms` to facilitate hierarchical, dynamic and multivariate modeling.^[For a reproducible version of this paper, please see the Github repository https://github.com/saudiwin/ordBetareg. To see how to fit the model with R package `brms`, which includes a full range of regression model options including multilevel/hierarchical models, see the vignette available at https://htmlpreview.github.io/?https://github.com/saudiwin/ordBetareg/blob/master/estimate_with_brms.html. I thank Adam Slez, Stijn Masschelein, Jonas Kristoffer Lindeløv, Matti Vuorre and anonymous reviewers for helpful comments.]"
 ---
 
 ```{r setup, include=F}
@@ -62,15 +62,15 @@ random_seed <- 77123101
 
 Although scholars often collect data that is continuous in nature within set bounds, statistical models are not easily designed to handle this design. For example, in the social, medical and behavioral sciences there has been increasing usage of slider and visual analog scales as a way to capture nuanced information from human respondents [@cooper2014; @roster2014].
 
-However, despite the increasing popularity of this type of data, the approaches in the statistical literature have significant limitations. While practitioners often fall back on ordinary least squares regression (OLS) as a convenient and easily interpretable way to analyze the data, in reality the Normal distribution cannot capture important characteristics of the sample. More recently, scholars have turned to the Beta regression model [@ferrari2010] as a more flexible continuous distribution. Although the Beta distribution is defined over the (0,1) interval, it can be used on any continuous distribution within fixed bounds because it is straightforward to normalize any distribution to the (0,1) interval.
+However, despite the increasing popularity of this type of data, the approaches in the statistical literature have significant limitations. While practitioners often fall back on ordinary least squares regression (OLS) as a convenient and easily interpretable way to analyze the data, the uni-modal, unbounded Normal distribution cannot capture important characteristics of the sample. More recently, scholars have turned to the Beta regression model [@ferrari2010] as a more flexible continuous distribution. Although the Beta distribution is defined over the (0,1) interval, it can be used on any continuous distribution within fixed bounds because it is straightforward to normalize any distribution to the (0,1) interval.
 
 While this clever parameterization permits powerful inference on these bounded, potentially bi-modal distributions, the Beta regression's main flaw is that it cannot model observations that are degenerate, i.e., equal to the lower bound of 0 or the upper bound of 1. Various solutions have been proposed, such as transforming the outcome so that all observations are strictly less than 0 or 1 [@verk2006], and more recently, modeling 0s and 1s through separate processes via zero-or-one inflated Beta regression [@ferrari2012] or the zero-and-one Beta regression model [@liu2015; @swearingen2012], which is also known as the ZOIB. However, as I show in this paper, transforming the outcome can inadvertently have important consequences for model results, while the ZOIB has issues with over-fitting the data by fitting multiple sets of parameters to degenerate (bounded) and continuous responses separately.
 
-A new approach is given in this paper that seeks to capture the best points of the existing approaches while permitting straightforward and efficient inference. To do so, I employ ordered cutpoints, similar in spirit to an ordered logit model, to estimate the joint probability of 0s (the lower bound), continuous proportions, and 1s (the upper bound) in bounded continuous data. As only one predictive model is used for all of the outcomes, the effect of covariates is identified across degenerate and continuous observations without resulting in over-fitting. The use of cutpoints permits the model to fit distributions with mostly denerate observations or no degenerate observations at all, which makes it a general solution to this problem.
+A new approach is given in this paper that seeks to capture the best points of the existing approaches while permitting straightforward and efficient inference. To do so, I employ ordered cutpoints, similar in spirit to an ordered logit model, to estimate the joint probability of 0s (the lower bound), continuous proportions, and 1s (the upper bound) in bounded continuous data. As only one predictive model is used for all of the outcomes, the effect of covariates is identified across degenerate and continuous observations without resulting in over-fitting. The use of cutpoints permits the model to fit distributions with mostly degenerate observations or no degenerate observations at all, which makes it a general solution to this problem.
 
 To compare this new model, I estimate a Monte Carlo simulations to examine how existing approaches compare along an array of criteria. The results show that ordered Beta regression estimates marginal effects much more precisely than competitors, resulting in higher power, while performing admirably on measures of overall fit. Furthermore, the simulation shows that the alternative of transforming values to avoid boundaries in Beta regression can have difficult-to-predict implications and should be avoided.
 
-To apply the model, I replicate @aidtWorkersWorldUnite2014 influential study of the spread of suffrage in Europe as a function of revolutions in neighboring countries. While the proposed estimator supports the main findings of the study, there are wide discrepancies in terms of the efficiency of estimators and for some covariates, both sign and significance. I show in this section that the ZOIB can over-fit the data by allowing for too much heterogeneity between degenerate and continuous responses, resulting in marginal effects which are substantively difficult to interpret.
+To apply the model, I replicate the @aidtWorkersWorldUnite2014 influential study on the spread of suffrage in Europe as a function of revolutions in neighboring countries. While the proposed estimator supports the main findings of the study, there are wide discrepancies in terms of the efficiency of estimators and for some covariates, both sign and significance. I show in this section how the ZOIB can over-fit the data by allowing for too much heterogeneity between degenerate and continuous responses, resulting in marginal effects which are substantively difficult to interpret.
 
 # Background
 
@@ -78,7 +78,7 @@ Bounded continuous data with observations at the bounds is common across scienti
 
 The default approach for modeling this type of variable is OLS regression as the variable is at least in part continuous. OLS, as the maximum entropy estimator for any continuous distribution with finite variance [@jaynes2003], is likely to capture at least some of the relevant features of the distribution. The more "Normal" the distribution, the more likely this approximation will give interpretable answers. However, @verk2006 raise important questions about this application of OLS to upper and lower-bounded dependent variables. They argue that OLS' failure to capture higher-order moments of the distribution represents a serious shortcoming because these moments, such as skewness and variance, may well affect what can be learned from the model and even the theoretical questions one can ask. One variation is to use a "quasi-likelihood" estimator called fractional logit [@papke1996] in which the trial parameter in the Bernoulli distribution is modeled as a continuous response with the logit link function. The primary drawback of fractional logit is that it is not itself a statistical distribution, and so the estimates' uncertainty can be difficult to define. As I show later, the estimator also appears to be heavily affected by the ratio of continuous to degenerate (i.e. at the bounds) responses in the outcome.
 
-More recently, Beta regression [@ferrari2010] has become an increasingly popular technique because it is a model explicitly designed for bounded continuous data. The main drawback of Beta regression, as mentioned earlier, is that it cannot handle observations at the bounds given that it is a distribution of probabilities. There are two straightforward ways to handle degenerate values within the Beta regression framework. The first is to simply drop these responses and model the remaining data. If the count of 0s and/or 1s in the data is small, this strategy would seem reasonable. A more sophisticated strategy is to normalize the outcome within a set of bounds that are close to, but never equal to, one. The formula from @verk2006 that has received considerable attention from researchers is as follows. For a given outcome \$y_i \in [0,1]\$\$, $i \in \{1,2, ... N\}$, define a normalized outcome $y_j$:
+More recently, Beta regression [@ferrari2010] has become an increasingly popular technique because it is a model explicitly designed for bounded continuous data. The main drawback of Beta regression, as mentioned earlier, is that it cannot handle observations at the bounds given that it is a distribution of probabilities. There are two straightforward ways to handle degenerate values within the Beta regression framework. The first is to simply drop these responses and model the remaining data. If the count of 0s and 1s in the data is small, this strategy would seem reasonable. A more sophisticated strategy is to normalize the outcome within a set of bounds that are close to, but never equal to, one. The formula from @verk2006 that has received considerable attention from researchers is as follows. For a given outcome $y_i \in [0,1]$, $i \in \{1,2, ... N\}$, define a normalized outcome $y_j$:
 
 $$
 y_j = \frac{y_i(N-1) + 0.5}{N}
@@ -86,9 +86,9 @@ $$
 
 The distribution of $y_i$ is nudged so that the values can never reach 0 or 1, and the amount of the nudge is determined by $N$. A larger sample will result in extreme values that are closer to the boundaries. This transformation permits Beta regression modeling without any need for further modeling choices. As such, it is a computationally simple and straightforward solution. However, it is not immediately clear what ramifications this transformation has on inferences as the transformation is non-linear and varies with sample size.
 
-Finally, the most recent development in this vein is the zero-one inflated Beta regression (ZOIB) model, an approach that this paper builds upon. While @ferrari2012 proposed a zero-or-one inflated Beta regression, where a degenerate process could be used to model either category separately, @liu2015 show how to model both 0s and 1s in a zero-one inflated Beta regression model with two distinct processes for degenerate responses. In this paper, I focus on the @liu2015 parameterization because it is possible to estimate effects of independent variables on the full scale of the DV, i.e., lower bounds, continuous values and upper bounds. I return to the @ferrari2012 interpretation in the discussion.
+Finally, the most recent development in this vein is the zero-one inflated Beta regression (ZOIB) model, an approach that this paper builds upon. While @ferrari2012 proposed a zero-or-one inflated Beta regression, where a degenerate process could be used to model either category separately, @liu2015 show how to model both 0s and 1s in a zero-one inflated Beta regression model with two distinct processes for degenerate responses. In this paper, I focus on the @liu2015 parameterization because it is possible to estimate effects of independent variables on the full scale of the DV, i.e., lower bounds, continuous values and upper bounds. I return to the @ferrari2012 model in the discussion.
 
-I first detail the @liu2015 parameterization as a useful starting place. It is important to note that this model and the model I present later both assume there are qualitative differences between degenerate (i.e., responses at the bounds) and continuous values of the DV. OLS would be a model that does not differentiate between the bounds and the continuous values. However, the way in which the two Beta-based models interpret this distinction varies and has an important implication for estimation and inference.
+I first detail the @liu2015 parameterization as a useful starting place. It is important to note that this model and the model I present later both assume there are qualitative differences between degenerate (i.e., responses at the bounds) and continuous values of the DV. By contrast, OLS is a model that does not differentiate between the bounds and the continuous values, unless such a distinction happens via post-hoc processing [@horraceResultsBiasInconsistency2006]. However, the way in which the two Beta-based models interpret this distinction varies and has an important implication for estimation and inference.
 
 Given a bounded continuous response $y_i$ with observations at the bounds of the scale, the ZOIB estimates three separate probabilities, which I label as $\alpha$ for $Pr(y_i=0)$, $\gamma$ for $Pr(y_i=1)$, and $\delta$ for $Pr(y_i>0 \cap y_i<1)$. Given these probabilities, we can define a conditional distribution over $y_i$ that depends on the realization of $y_i$ in these three mutually exclusive outcomes, along with parameters $\mu$ and $\phi$ to model the continuous outcomes via the Beta distribution (defined below):
 
@@ -132,7 +132,7 @@ This exchangeability, however, comes at a cost of over-fitting the distribution 
 
 To resolve the problem of over-parameterization in the ZOIB, I present *ordered* Beta regression. The main difference between this approach and the ZOIB model is to induce dependence between the three probabilities $\alpha$, $\gamma$ and $\delta$. To do so, I borrow ideas from the literature on the ordered (cumulative) logit model [@ologit1980]. From a behavioral perspective, suppose data is being collected on the preferences of individual $i$ over an outcome that is continuous in $\mathbb{R}^1$. We can denote these latent preferences as $y_i^*$. We collected a set of measurements $y_i$ for each individual in our sample concerning their preferences. However, because we cannot represent $\mathbb{R}^1$ in a limited space, we can only collect data using a bounded scale, resulting in a biased estimate of true preferences $y_i^*$ for those with preferences above or below the bounds of the scale.
 
-While we cannot directly observe $y_i^*$, we can obtain estimates of our uncertainty in using a bounded scale as a stand-in for true preferences. We can think of the distribution of our measurements $y_i$ as being a realization of a latent cumulative distribution function $F(y_i^*)$ defined by a set of ordered cutpoints $\{k1,k2: k1<k2\}$. Each cutpoint represents a lower and upper bound of our observed scale, and individuals with preferences above or below these bounds are assigned a value of $y_i$ at the bound. Providing estimated locations for these cutpoints in $F(y_i^*)$ will permit us to also estimate the approximate intensity of preferences that are lost in the data measurement process, and consequently correct for bias in the reported data.
+While we cannot directly observe $y_i^*$, we can obtain estimates of our uncertainty in using a bounded scale as a stand-in for true preferences. We can think of the distribution of our measurements $y_i$ as being a realization of a latent cumulative distribution function $F(y_i^*)$ defined by a set of ordered cutpoints $\{k1,k2: k1<k2\}$. Each cutpoint represents the point at which the bounds of the observed scale become more likely than the continuous values. The farther past the cutpoint an individual's preferences are, the more likely that individual will provide a measured value of $y_i$ at the bound. Providing estimated locations for these cutpoints in $F(y_i^*)$ will permit us to also estimate the approximate intensity of preferences that are lost in the data measurement process, and consequently correct for bias in the reported data.
 
 Importantly, because we are interested in a single latent scale of preferences $y_i^*$, we can also have a single set of regressors $X'\beta$ that predict this latent variable, $y^*_i = g(X'\beta)$. At very low values of $y_i^*$ below $k_1$, we observe a degenerate outcome $y_i=0$, and at very high values of $y_i^*$ above $k_2$ we observe a degenerate outcome $y=1$. For intermediate values of $y_i^*$, we observe the Beta-distributed outcome $y_i \in (0,1)$, which we can assume is unbiased over its range (i.e., strictly within the bounds).
 
@@ -150,9 +150,9 @@ Using $y_i^*$ and cutpoints $k_1$ and $k_2$, we can now re-define the probabilit
 ```
 We can see that we can still obtain the necessary probabilities $\alpha$ ($Pr(y_i=0)$), $\gamma$ ($Pr(y_i=1)$) and $\delta$ ($Pr(y_i>0 \cap y_i<1)$) to combine the 0s, 1s, and proportions into a single distribution. However, unlike in \@ref(eq:zoib), the probabilities are no longer exchangeable, but rather ordered due to the cutpoints. The position of the cutpoints $k_1$ and $k_2$ will affect each outcome by either decreasing or increasing the probability of that outcome occurring. As $k_1$ increases, $Pr(y_i=0)$ must increase and $Pr(y_i>0 \cap y_i<1)$ must decrease. Similarly, an increase in $k_2$ will necessarily make $Pr(y_i=1)$ decrease and increase $Pr(y_i>0 \cap y_i<1)$.
 
-In terms of latent utility, the position of the cutpoints defines the potential loss of information about an individual. If the cutpoints increase, then there would seem to be more bunching around the end of the observed scale and consequently only higher levels of $y*$ are associated with observations at the bounds. As the cutpoints move towards zero, there is no clear break in the distribution around the bounds and consequently little reason to expect significant bias. As can be seen in \@ref(eq:redef), if both $k_1=0$ and $k_2=0$, then the probability of $\delta$, or a continuous observation, is simply equal to $\text{Beta}(g(X'\beta),\phi)$, i.e. there is no need to adjust the observed data and the probability of a degenerate outcome increases in tandem with the continuous outcomes.
+In terms of latent utility, the position of the cutpoints defines the potential loss of information about an individual. If the cutpoints increase, then there would seem to be more bunching around the end of the observed scale and consequently only higher levels of $y_i^*$ are associated with observations at the bounds. As the cutpoints decrease towards zero, there is no clear break in the distribution around the bounds and consequently little reason to expect significant bias. As can be seen in \@ref(eq:redef), if both $k_1=0$ and $k_2=0$, then the probability of $\delta$, or a continuous observation, is simply equal to $\text{Beta}(g(X'\beta),\phi)$, i.e. there is no need to adjust the observed data and the probability of a degenerate outcome increases in tandem with the continuous outcomes.
 
-This is another important distinction between the ordered beta regression and the ZOIB model--both treat responses at the bounds as qualitatively different than the continuous responses in some sense, but the ordered beta regression allows the extent of difference to be a function of the data. In some datasets, that difference will be quite pronounced, while in others, it will be minimal. It is even possible for there to be no difference at all if the cutpoints are estimated at zero.
+This is another important distinction between the ordered beta regression and the ZOIB model--both treat responses at the bounds as qualitatively different than the continuous responses in some sense, but the ordered beta regression allows the extent of difference to be a function of the data. In some datasets, that difference will be quite pronounced, while in others, it will be minimal. It is even possible for there to be no functional difference if the cutpoints are estimated at zero.
 
 The implication of using ordered cutpoints means that only two parameters, the cutpoints themselves, are required in addition to the auxiliary parameter $\phi$. Thus only two parameters more than OLS are required to fit this model, improving considerably efficiency and information retrieval relative to the ZOIB, as will be shown in the simulations. It is possible to expand the model by permitting thresholds to vary by groups, as in the graded response model [@samejima1997], although I do not consider those extensions here. This type of heterogeneity could improve model fit, but sample-average cutpoints are appropriate when subgroup-level differences are not the primary aim of the analysis.
 
@@ -166,13 +166,13 @@ s(\mathbf{K},0) &\sim D(\mathbf{1})
 (\#eq:prior)
 \end{align}
 ```
-I use what is known as an induced Dirichlet prior over the set of cutpoints $K$ in which the cutpoints are converted to a vector of probabilities via a sigmoid function $s(\cdot)$ [@betancourtOrdinalRegression2019]. A vector of 1s is a passed to the Dirichlet distribution to assume that the probability of each sub-model, 0, 1 and the Beta model, is equal a priori. Similarly, the prior on $\beta$ is weakly informative on the logit scale. The prior on $\phi$ is an exponential distribution with a rate parameter of .1. This prior would need to be adjusted if $\phi$ took on very large values, which could occur if the distribution became highly centered on a single point.
+I use what is known as an induced Dirichlet prior over the set of cutpoints $K$ in which the cutpoints are converted to a vector of probabilities via a sigmoid function $s(\cdot)$ [@betancourtOrdinalRegression2019]. A vector of 1s is passed to the Dirichlet distribution to assume that the probability of each sub-model, 0, 1 and the Beta model, is equal a priori. Similarly, the prior on $\beta$ is weakly informative on the logit scale. The prior on $\phi$ is an exponential distribution with a rate parameter of .1. This prior would need to be adjusted if $\phi$ took on very large values, which could occur if the distribution became highly centered on a single point.
 
 More informative priors for the cutpoints could be useful in a repeated sampling situation in which observations at the bounds may or may not be present in a given sample. An informative cutpoint prior could stabilize inferences across samples by informing model estimates that observations at the bounds are likely to occur even if they are not in the sample at hand.
 
 <!-- The exponential prior on $\phi$ similarly puts prior mass on a wide range of values due to its long tail. The priors also permits the model to fit distributions that do not have observed degenerate values, such as in a repeated sampling situation where degenerate values may or may not appear in a given sample. -->
 
-It is possible to further parameterize $\phi$ to model higher moments in the distribution. A lower value of $\phi$ for a given value of $\mu$ is associated with a more dispersed distribution, either 0, 1 or both depending on the value of $\mu$. This kind of information can be useful to analyze in a context where understanding which respondents/subjects tend to choose middle versus extreme values is a research question of interest. To do so we simply replace $\phi$ with a set of regressors $\beta_\phi$ and a covariate matrix $X$ (the covariates could be shared or different from those used to predict the mean of the distribution). The ability to model $\phi$ is an important advantage of employing the Beta distribution as it permits inferences on the nature of multi-modal distributions in ways that OLS and other alternatives cannot.
+It is possible to further parameterize $\phi$ to model higher moments in the distribution. A lower value of $\phi$ for a given value of $\mu$ is associated with a more dispersed distribution, either 0, 1 or both depending on the value of $\mu$. This kind of information can be useful to analyze in a context where understanding which subjects tend to choose middle versus extreme values is a research question of interest. To do so we simply replace $\phi$ with a set of regressors $\beta_\phi$ and a covariate matrix $X$ (the covariates could be shared or different from those used to predict the mean of the distribution). The ability to model $\phi$ is an important advantage of employing the Beta distribution as it permits inferences on the nature of multi-modal distributions in ways that OLS and other alternatives cannot.
 
 In the supplementary information I write out the full log-likelihood and joint posterior of the model.
 
@@ -224,7 +224,7 @@ To compare the models, I simulate data in a manner consistent with the distribut
 \phi &\sim U(0.5,30)\\
 q &\sim U(1,15)\\
 \rho_q &\sim U(0,0.9)\\
-\textbf{\beta_q} &\sim U(-5,5)\\
+\mathbf{\beta_q} &\sim U(-5,5)\\
 k_1 &\sim U(-10,-1)\\
 k_2 &\sim k_1 + U(0.5,10)
 (\#eq:simval)
@@ -242,9 +242,9 @@ The reported M-errors [@gelman2014types] in Table \@ref(tab:comparebase) are def
 
 In terms of model complexity, the effective number of parameters of ordered beta regression is quite similar to OLS, but half that of the ZOIB. Interestingly, fractional logit and the beta regressions have fewer effective parameters than ordered beta regression, implying these models are actually under-specified. Higher $\hat{elpd}_{PSIS-LOO}$ values likewise correctly select ordered beta regression as the "true" model and the ZOIB as a second competitor, which would be expected given the similar nature of these models.
 
-However, the closeness in $\hat{elpd}_{PSIS-LOO}$ values only measures similar fit to the response variable rather than inference. The ZOIB and ordered beta regression differ significantly in the amount of uncertainty in estimating the marginal effect, with Table \@ref(tab:comparebase) shows that the average variance of the posterior density for ordered beta regression marginal effects is far less than the ZOIB and other alternatives.
+However, the closeness in $\hat{elpd}_{PSIS-LOO}$ values only measures similar fit to the response variable rather than inference. The ZOIB and ordered beta regression differ significantly in the amount of uncertainty in estimating the marginal effect, Table \@ref(tab:comparebase) shows that the average variance of the posterior density for ordered beta regression marginal effects is far less than the ZOIB and other alternatives.
 
-I further explore differences between models by examining these statistics as a function of sample size $N$ in Figure \@ref(fig:lookurt). I also include power as a separate calculation, i.e. the probability of detecting an effect different from zero (defined as a posterior interval with same sign as the marginal effect). As can be seen, ordered beta regression out-performs on these key inferential metrics, and the difference is more pronounced when sample sizes are less than 1,000. Above 1,000, differences are smaller although they still persist. Interestingly, the simulation does not show that M-errors decrease noticeably with larger samples.
+I further explore differences between models by examining these statistics as a function of sample size $N$ in Figure \@ref(fig:lookurt). I also include power as a separate calculation, i.e. the probability of detecting an effect different from zero (defined as a posterior interval with the same sign as the marginal effect). As can be seen, ordered beta regression out-performs on these key inferential metrics, and the difference is more pronounced when sample sizes are less than 1,000. Above 1,000, differences are smaller although they still persist. Interestingly, the simulation does not show that M-errors decrease noticeably with larger samples.
 
 <!-- Immediately below the M-error panel is the S-error panel, which is defined as the proportion of estimated marginal effects that have a different sign than the true marginal effect [@gelman2014types]. Sign errors are relatively unlikely and the models do not seem to diverge significantly on this statistic, possibly because there is not enough power to separate the models' performance. -->
 
@@ -256,7 +256,9 @@ I further explore differences between models by examining these statistics as a 
 
 require(forcats)
 
-all_sim <- readRDS("data/sim_cont_X.rds")
+#all_sim <- readRDS("data/sim_cont_X.rds")
+# compatability with Dataverse
+load("data/sim_cont_X.RData")
 checkc <- sapply(all_sim, class)
 all_sim <- all_sim[checkc!='try-error']
 all_sim <- bind_rows(all_sim) %>% 
@@ -318,15 +320,19 @@ all_sim_calc <- all_sim %>%
   mutate(model=factor(model),
          model=fct_relevel(model,"Ordinal Beta Regression","ZOIB"),
          model=recode(model, `Ordinal Beta Regression`="Ordered Beta Regression")) %>% 
+    filter(!(model %in% c("Beta Regression - (0,1)",
+                                     "Beta Regression - Transformed") & type=="ELPD LOO")) %>% 
   arrange(type, model) %>% 
   select(Statistic="type",
          Model="model",
          `5%`="lower",
          `Mean`="med_est",
          `95%`="upper") %>% 
-  kable(caption="Comparison of Simulation Diagnostics",label = "comparebase") %>% 
- kable_styling(latex_options = c("hold_position"),
-               font_size=10) %>% 
+  kable(caption="Comparison of Simulation Diagnostics",
+        label = "comparebase",
+        booktabs=T,longtable=T) %>% 
+ kable_styling(latex_options = c("hold_position","repeat_header"),
+               font_size=8) %>% 
   collapse_rows(columns=1,latex_hline = "major",
       valign="top")
   
@@ -345,6 +351,8 @@ all_sim_calc <- all_sim %>%
   # coord_flip()
 
 ```
+
+The fixed simulation results, which are available in the supplemental information, show that for certain values of parameters, it is possible for the ZOIB to have lower variance in estimated marginal effects than ordered beta regression. However, the decrease in variance is small while the increase in bias via M-errors is quite large: in the fixed simulation, the ZOIB estimates coefficients with less than half the magnitude of the true marginal effect.
 
 As a result, even without looking at empirical examples, it is difficult to recommend OLS, fractional logit or transformed continuous outcomes as a general approach for analyzing this type of data. Fractional logit and OLS perform reasonably well at recovering marginal effects, but they have noticeably lower coverage rates. Transformation of the outcome to the $[0,1]$ interval is also clearly not a harmless strategy as it dramatically changes the estimated marginal effects. Discarding degenerate outcomes can likewise affect parameter estimates even though the continuous outcomes are predicted by the same linear model as the degenerate outcomes. All of the alternatives estimate marginal effects with substantially more uncertainty than the ordered beta model.
 
@@ -368,6 +376,7 @@ all_sim %>%
   stat_smooth(aes(colour=model,linetype=model),method="gam",formula = y ~ s(x, bs = "cs")) + 
   ylab("") +
   xlab("N") +
+  scale_color_viridis_d() +
   facet_wrap(~type,scales="free_y",ncol = 2) +
   labs(caption=stringr::str_wrap("Summary smooth calculated via generalized additive model. M Errors  and S errors are magnitude of bias and incorrect sign of the estimated marginal effect. Variance refers to estimated posterior variance (uncertainty) of the marginal effect.",width=80)) +
   guides(color=guide_legend(title=""),
@@ -403,7 +412,7 @@ all_sim %>%
 \textit{Notes:} Summary smooth calculated via generalized additive model. Variance of $\beta_x$ refers to estimated posterior variance (uncertainty) of the marginal effect. Variance calculated conditional on simulated covariate correlation $\rho_x$.
 \end{figure}
 ```
-It is clear further that even though ordered beta regression can be understood as a special case of the ZOIB, the simplified parameterization has real consequences for inference. As is seen in the statistics above, the ZOIB can recover marginal effects and has high $\hat{elpd}_{PSIS-LOO}$ scores, but its model complexity is far higher and its marginal effects are substantially more uncertain. To make the distinction clearer, I show variance estimates of marginal effects from the ZOIB conditional on the correlation ($\rho_x$) and number of covariates in Figure \@ref(fig:pressure). As can be seen, variance increases considerably as the number of covariates increases when correlation between covariates is high.
+It is clear that even though ordered beta regression can be understood as a special case of the ZOIB, the simplified parameterization has real consequences for inference. As is seen in the statistics in Figure \@ref(fig:lookurt), the ZOIB can recover marginal effects and has high $\hat{elpd}_{PSIS-LOO}$ scores, but its model complexity is far higher and its marginal effects are substantially more uncertain. To make the distinction clearer, I show variance estimates of marginal effects from the ZOIB conditional on the correlation ($\rho_x$) and number of covariates in Figure \@ref(fig:pressure). As can be seen, variance increases considerably when the number of covariates and the correlation between covariates is high.
 
 To distinguish the models in an applied setting, I next turn to an empirical example.
 
@@ -515,7 +524,8 @@ tibble(therm=model_data$therm*100) %>%
   theme_minimal() + 
   theme(panel.grid=element_blank()) +
   scale_x_continuous(breaks=c(0,25,50,75,100),
-                     labels=c("0","Colder","50","Warmer","100")) +
+                     labels=c("0","Less Suffrage",
+                              "50","More Suffrage","100")) +
   ylab("") +
   geom_vline(xintercept=mean(plogis(fit_pew$draws("cutpoints[1]")))*100,
              linetype=2) +
@@ -998,10 +1008,10 @@ loo_p <- tibble(Model=c("Ordered\nBeta","ZOIB",
     theme_tufte() +
     theme(panel.border = element_rect(fill=NA)) +
   geom_pointrange(aes(ymin=low,
-                     ymax=high),size=1) +
+                     ymax=high),size=.4,alpha=0.5) +
   coord_flip() +
   geom_text(aes(label=signif(med_est,3)),vjust="bottom",hjust="inward",
-            nudge_x=.1,size=1) +
+            nudge_x=.1,size=2.7) +
   facet_wrap(~Statistic,scales="free_x",nrow=3) + 
   ylab("") +
   xlab("") +
@@ -1009,7 +1019,7 @@ loo_p <- tibble(Model=c("Ordered\nBeta","ZOIB",
 
 ```
 
-Interestingly, OLS has superior performance over other models in terms of $\hat{elpd}_{psis_loo}$, and RMSE, which is likely due to the prevalence of continuous values (in the (0,1) interval) in the outcome. As the proportion of degenerate responses increases, OLS well perform less well on these metrics. The fact that OLS can perform well while still being the "wrong" model shows the limitation in solely focusing on predictive validity.
+Interestingly, OLS has superior performance over other models in terms of $\hat{elpd}_{psis_loo}$, and RMSE, which is likely due to the prevalence of continuous values (in the (0,1) interval) in the outcome. As the proportion of degenerate responses increases, OLS will perform less well on these metrics. The fact that OLS can perform well while still being the "wrong" model shows the limitation in solely focusing on predictive validity.
 
 On the other hand, we see that ordered Beta regression does quite well in RMSE and $\hat{elpd}_{psis_loo}$, even if not as well as OLS, while also having noticeably lower effective number of parameters and coefficient (marginal effect) variance. Furthermore, we know from the simulation that this superior performance will hold across very different distributions with more or less degenerate versus continuous responses.
 
@@ -1037,14 +1047,14 @@ Beta_trans_dens <- ppc_dens_overlay(as.numeric(model_data$therm[sample_all]),as.
     ylab("Empirical Density")
 lm_dens + ord_dens + zoib_dens + Beta_trans_dens + frac_dens +
   plot_layout(guides = 'collect') +
-  plot_annotation(caption=TeX("Value of $y$"),
-                  theme=theme(plot.caption = element_text(hjust=0.5)),
-                              text.axis.x=element_text(size=9))
+  plot_annotation(caption=TeX("Value of $y$"))  &
+                  theme(plot.caption = element_text(hjust=0.5),
+                              axis.text.x=element_text(size=7))
 ```
 
 I next compare estimated marginal effects from each model in Figure \@ref(fig:combinecoef). For some covariates, such as Revolution (whether a neighboring country experienced a democratic revolution), the estimates are of the same sign, though not necessarily the same magnitude. In other cases, such as $\text{Population}_{t-1}$, OLS and the ZOIB/ordered beta regression estimates have opposite signs, and for $\text{GDP}_{t-1}$, ordered beta regression shows a strongly positive effect while the ZOIB shows an estimated effect of zero. However, generally speaking the two models have coefficients that are of the same sign, although the magnitude can vary significantly.
 
-The heterogeneity in the transformed Beta regression estimates is another worrying sign that budging the degenerate responses has a very strong implication for inference. The marginal effects for this model vary quite significantly from ordered Beta regression and the ZOIB even though these latter two specifications also incorporate the Beta distribution. Because the data transformation depends on $N$, the minimum allowed value for the outcome in this case is 0.0000082, while the maximum value is 0.9999918. As such, this seemingly minute transformation will have strong consequences on the estimation of the Beta regression as it takes into account these very unlikely observations. The fact that the variance is less than half that of ordered beta regression is another concerning sign that the data transformation may also lead to an inflation of certainty in the results.
+The heterogeneity in the transformed Beta regression estimates is another worrying sign that nudging the degenerate responses has a very strong implication for inference. The marginal effects for this model vary quite significantly from ordered Beta regression and the ZOIB even though these latter two specifications also incorporate the Beta distribution. Because the data transformation depends on $N$, the minimum allowed value for the outcome in this case is 0.0000082, while the maximum value is 0.9999918. As such, this seemingly minute transformation will have strong consequences on the estimation of the Beta regression as it takes into account these very unlikely observations. The fact that the variance is less than half that of ordered beta regression is another concerning sign that the data transformation may also lead to an inflation of certainty in the results.
 
 ```{r combinecoef,fig.cap="Estimated Marginal Effects of Aidt and Jensen (2012) Covariates on Suffrage Index (0 - 100)",fig.width=6,fig.height=8.5}
 
@@ -1081,14 +1091,15 @@ recode_marg <- bind_rows(list(OLS=gather(as_tibble(out_lm),key="variable",value=
             high=quantile(marg,.95),
             low=quantile(marg,.05)) %>% 
     # filter(model %in% c("Ordered\nBeta","ZOIB","OLS","Fractional\nLogit")) %>% 
-  ggplot(aes(y=med_est,x=forcats::fct_rev(variable))) +
+  ggplot(aes(y=med_est,x=model)) +
   geom_pointrange(aes(ymin=low,ymax=high,colour=model,shape=model),position=position_dodge(width=.5)) +
   scale_color_viridis_d() +
   theme_minimal() +
   geom_hline(yintercept = 0,linetype=2) +
   ylab("Marginal Effects on Suffrage (0 to 100)") +
-  theme(legend.position = "top",panel.background = element_text(fill=NA)) +
-  guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
+  theme(legend.position = "top",axis.text.y=element_text(size=9),
+        panel.background = element_rect(fill=NA)) +
+  guides(color="none",shape="none") +
   facet_wrap(~variable,
              scales="free",ncol=2) +
   xlab("") +
@@ -1259,9 +1270,9 @@ ord_reg_all_prob <- lapply(just_vars,function(c) {
 compare_prob <-  bind_rows(list(`ZOIB`=zoib_all_prob,
                 `Ordered Beta`=ord_reg_all_prob),.id="model") %>% 
     group_by(model,variable,estimate) %>% 
-  summarize(med_est=median(marg),
-            high=quantile(marg,.95),
-            low=quantile(marg,.05)) 
+  summarize(med_est=median(marg*100),
+            high=quantile(marg*100,.95),
+            low=quantile(marg*100,.05)) 
 
 compare_prob %>% 
   mutate(estimate=factor(estimate,levels=c("Beta(y)",
@@ -1284,7 +1295,7 @@ compare_prob %>%
   scale_color_viridis_d() +
   theme_tufte() +
   geom_hline(yintercept = 0,linetype=2) +
-  ylab("Thermometer Scores") +
+  ylab("Suffrage Index") +
   theme(legend.position = "top",
         panel.border = element_rect(fill=NA)) +
   guides(color=guide_legend(title=""),shape=guide_legend(title="")) +
@@ -1300,7 +1311,7 @@ First, it should be noted that the disparities do not arise from the underlying 
 
 By contrast, for the ZOIB, marginal effects can have independent influences on these three probabilities. This pattern can be seen for the $\text{GDP}_{t-1}$ covariate. The ZOIB estimates that rising GDP will increase the probability of zero suffrage ($Pr(y=0)$), increase the probability of full suffrage ($Pr(y=1)$), while simultaneously reducing the probability of intermediate suffrage ($Pr(y>0) \cap Pr(y<1)$) and increasing the value of intermediate suffrage conditional on intermediate suffrage being reached ($\text{Beta}(y)$). The ordered beta regression model, by contrast, estimates that rising GDP is associated with a lower chance of zero suffrage, rising probability of intermediate and high suffrage, as well as a higher value of intermediate suffrage. This latter set of associations seems to follow more logically from the definition of the outcome as a single scale of democratic inclusion.
 
-It is of course possible that the ZOIB and ordered beta regression produce the same interpretation. The Revolution covariate, which has a similar aggregate effect in Figure \@ref(fig:combinecoef), likewise has similar disaggregated effects across outcome types in Figure \@ref(fig:zoibcoef), revealing that the two models can overlap if the ZOIB meets the ordered Beta model's assumptions. In summary, both the ZOIB and the ordered beta model treat the degenerate responses as qualitatively different, but the ZOIB goes as far as allowing them to be completely independent processes, which can have confusing implications for inference when the scale is a single construct. By allowing for limited heterogeneity in the bounded outcome, ordered beta regression can estimate a single marginal effect across the entire distribution, which corresponds more closely to the desired interpretation in this study and many others.
+It is of course possible that the ZOIB and ordered beta regression produce the same interpretation. The Revolution covariate, which has a similar aggregate effect in Figure \@ref(fig:combinecoef), likewise has similar disaggregated effects across outcome types in Figure \@ref(fig:zoibcoef), revealing that the two models can overlap if the ZOIB meets the ordered Beta model's assumptions. In summary, both the ZOIB and the ordered beta model treat the degenerate responses as qualitatively different, but the ZOIB goes as far as allowing them to be completely independent processes, which can have confusing implications for inference when the scale is a single construct. By allowing for limited heterogeneity in the bounded outcome, ordered beta regression can estimate a single marginal effect across the entire distribution, which corresponds more closely to the desired interpretation in this study and many others with a single measured construct.
 
 # Discussion
 
