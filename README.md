@@ -21,6 +21,9 @@ The repository includes the following files:
   - `define_ord_betareg.R` This R script contains all the auxiliary code
     needed to fit the model with R package `brms` (see vignette above
     for more info).
+  - `*_fit.rds` Fitted model object files to reproduce paper results much faster
+  - `data/sim_cont_X*.RData` Simulation results to reproduce paper results much faster
+  - `data/suffrage_paper_replicationfiles/EER-D-13-00718R2_maindata_suffrage.dta` Data from Toke and Aidt (2012)
   - `ordered_beta_reg_sim.R` This R script will run a simulation
     comparing the ordered beta regression model to alternatives,
     including the zero-one-inflated Beta regression model (ZOIB). The
