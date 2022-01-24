@@ -3,7 +3,7 @@ README
 Robert Kubinec
 January  11th, 2022
 
-**Please note: This is the repository for the paper files. To access the R package `ordbetareg`, please go to this repository: www.github.com/saudiwin/ordbetaregpack.**
+**Please note: This is the repository for the paper files. To access the R package `ordbetareg`, please go to this repository: www.github.com/saudiwin/ordbetareg_pack.**
 
 This repository contains data and code for the paper, “Ordered Beta Regression: A Parsimonious, Well-Fitting Model for Continuous Data with Lower and Upper Bounds", which is  now forthcoming at the journal *Political Analysis*. An ungated preprint can be found here: https://osf.io/preprints/socarxiv/2sx6y/. Replication files can be found both on Dataverse and Github. 
 
