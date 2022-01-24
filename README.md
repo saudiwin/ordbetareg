@@ -3,6 +3,8 @@ README
 Robert Kubinec
 January  11th, 2022
 
+**Please note: This is the repository for the paper files. To access the R package `ordbetareg`, please go to this repository: www.github.com/saudiwin/ordbetaregpack.**
+
 This repository contains data and code for the paper, “Ordered Beta Regression: A Parsimonious, Well-Fitting Model for Continuous Data with Lower and Upper Bounds", which is  now forthcoming at the journal *Political Analysis*. An ungated preprint can be found here: https://osf.io/preprints/socarxiv/2sx6y/. Replication files can be found both on Dataverse and Github. 
 
 To replicate the paper, please first run the `install.R` script to make sure all relevant packages are installed. The script will also install `cmdstanr` and a version of `cmdstan`, which is the underlying MCMC sampling library from the Stan project. Installing `cmdstan` requires the R toolchain; if you have any trouble or are unsure see the `cmdstanr` package installation instructions: https://mc-stan.org/cmdstanr/articles/cmdstanr.html.
