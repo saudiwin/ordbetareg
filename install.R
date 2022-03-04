@@ -8,7 +8,7 @@ packages = c("dplyr","rstanarm","tidyr",
              "lubridate","loo","kableExtra",
              "bayesplot","patchwork","stringr","grDevices","emojifont",
              "latex2exp","haven","ggplot2",
-             "posterior","brms","remotes","xfuture.apply",
+             "posterior","brms","remotes","future.apply",
              "faux","rmarkdown","bookdown","tinytex","extrafont")
 
 print("Checking and installing packages.")

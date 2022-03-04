@@ -11,6 +11,32 @@ To replicate the paper, please first run the `install.R` script to make sure all
 
 The file `master.R` will then run all the necessary scripts to compile the paper and supplementary information  (compilation requires a working Latex installation). Note that `master.R` by default loads the existing simulation data in the `data` folder. To fully reproduce the simulation, set the `run_sim` variable in `master.R` to `TRUE`. Note that running the full simulation can require up to a few days on a machine with ~40 cores. 
 
+The version of R used for these results was 4.1.2 and the version of the R packages is as follows:
+
+  - dplyr: 1.0.7
+  - rstanarm: 2.21.1
+  - tidyr: 1.1.4
+  - lubridate: 1.8.0
+  - loo: 2.4.1
+  - kableExtra: 1.3.4
+  - bayesplot: 1.8.1
+  - patchwork: 1.1.1
+  - stringr: 1.4.0
+  - grDevices: 4.1.2
+  - emojifont: 0.5.5
+  - latex2exp: 0.5.0
+  - haven: 2.4.3
+  - ggplot2: 3.3.5
+  - posterior: 1.2.0
+  - brms: 2.16.3
+  - remotes: 2.4.2
+  - future.apply: 1.8.1
+  - faux: 1.1.0
+  - rmarkdown: 2.11
+  - bookdown: 0.24
+  - tinytex: 0.36
+  - extrafont: 0.17
+
 The repository includes the following files:
 
   - `kubinec_ord_betareg_accepted.Rmd` The accepted version of the reproducible Rmarkdown document that can
