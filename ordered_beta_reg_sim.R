@@ -4,10 +4,6 @@
 # Simulation of 0 - 1 bounded dependent variables
 # Note simulation will take some time, approx ~2 days with 3 cores
 
-.libPaths("/home/rmk7/other_R_libs3")
-
-cmdstanr::set_cmdstan_path("/home/rmk7/cmdstan")
-
 require(cmdstanr)
 require(bayesplot)
 require(dplyr)
