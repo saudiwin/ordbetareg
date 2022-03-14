@@ -3,18 +3,18 @@ title: "Ordered Beta Regression: A Parsimonious, Well-Fitting Model for Continuo
 bibliography: BibTexDatabase.bib
 date: January 12, 2022
 geometry: margin=1in
-biblio-style: chicago-authordate
-biblatexoptions: [backend=biber,giveninits,pagetracker=true,autocite=inline,alldates=comp,labeldateparts=true,
-  citetracker=true,useeditor=true,usetranslator=true,
-  usenamec=true,alltimes=12h,urltime=24h,datecirca=true,datezeros=false,
-  dateuncertain=true,timezones=true,compressyears=true,
-  ibidtracker=constrict,sorting=cms,punctfont,cmslos=true,nodates,
-  uniquelist=minyear,maxbibnames=10,minbibnames=7,sortcase=false,
-  abbreviate=false,dateabbrev=false,avdate=true]
+# biblio-style: chicago-authordate
+# biblatexoptions: [backend=biber,giveninits,pagetracker=true,autocite=inline,alldates=comp,labeldateparts=true,
+#   citetracker=true,useeditor=true,usetranslator=true,
+#   usenamec=true,alltimes=12h,urltime=24h,datecirca=true,datezeros=false,
+#   dateuncertain=true,timezones=true,compressyears=true,
+#   ibidtracker=constrict,sorting=cms,punctfont,cmslos=true,nodates,
+#   uniquelist=minyear,maxbibnames=10,minbibnames=7,sortcase=false,
+#   abbreviate=false,dateabbrev=false,avdate=true]
 output: 
   bookdown::pdf_document2:
       keep_tex: true
-      citation_package: biblatex
+      # citation_package: biblatex
       toc: false
       includes:
         in_header: preamble.tex
