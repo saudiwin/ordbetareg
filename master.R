@@ -18,7 +18,7 @@ if(run_sim)  {
 
 print("Compiling paper")
 
-rmarkdown::render("kubinec_ord_betareg_accepted.Rmd")
+rmarkdown::render("kubinec_ord_betareg_accepted_dataverse.Rmd")
 
 print("Compiling supplementary information")
 

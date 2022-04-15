@@ -21,9 +21,12 @@ frac_mod <- cmdstanr::cmdstan_model("frac_logit.stan")
 
 set.seed(772235)
 
+# number of draws per sample size
+draws <- 1
+
 # let's do some simulations
 
-simul_data <- tibble(N=rep(c(25,50,75,seq(100,3000,by=200)),each=100)) %>% 
+simul_data <- tibble(N=rep(c(25,50,75,seq(100,3000,by=200)),each=draws)) %>% 
                      mutate(k=5,
                      rho=.7,
                      phi=2,
@@ -116,7 +119,7 @@ gen_x <- function(k,rho,N_rep) {
 
 r_seeds <- c(6635,2216,8845,9936,3321,63914)
 
-plan(multicore,workers=40)
+plan(multicore)
 
 all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
 #all_simul_data <- lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
@@ -280,6 +283,8 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
   
  
   zoib_fit <- try(zoib_model$sample(data=list(n=length(final_out),
+                                              s=length(final_out),
+                                              sample_all=1:length(final_out),
                                             y=final_out,
                                             k=ncol(x),
                                             x=x,
@@ -657,8 +662,8 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
 
 #simul_data_final <- bind_rows(all_simul_data)
 
-saveRDS(all_simul_data,"data/sim_cont_X_fixed.rds")
+saveRDS(all_simul_data,"sim_cont_X_fixed.rds")
 
 all_sim_fixed <- all_simul_data
 
-save(all_sim_fixed, file="data/sim_cont_X_fixed.RData")
+save(all_sim_fixed, file="sim_cont_X_fixed.RData")

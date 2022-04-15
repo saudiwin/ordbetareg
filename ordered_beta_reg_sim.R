@@ -23,7 +23,7 @@ set.seed(772235)
 
 # let's do some simulations
   
-N_rep <- 10000
+N_rep <- 10
 
 simul_data <- tibble(N=round(runif(N_rep,100,4000),0),
                      k=floor(runif(N_rep,1,15)),
@@ -118,7 +118,7 @@ gen_x <- function(k,rho,N_rep) {
 
 r_seeds <- c(6635,2216,8845,9936,3321,63914)
 
-plan(multicore,workers=40)
+plan(multicore)
 
 all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
 #all_simul_data <- lapply(1:nrow(simul_data), function(i,simul_data=NULL,r_seeds=NULL) {
@@ -282,6 +282,8 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
   
  
   zoib_fit <- try(zoib_model$sample(data=list(n=length(final_out),
+                                              s=length(final_out),
+                                              sample_all=1:length(final_out),
                                             y=final_out,
                                             k=ncol(x),
                                             x=x,
@@ -659,6 +661,6 @@ all_simul_data <- future_lapply(1:nrow(simul_data), function(i,simul_data=NULL,r
 
 #simul_data_final <- bind_rows(all_simul_data)
 
-saveRDS(all_simul_data,"data/sim_cont_X.rds")
+saveRDS(all_simul_data,"sim_cont_X.rds")
 all_sim <- all_simul_data
-save(all_sim, file="data/sim_cont_X.RData")
+save(all_sim, file="sim_cont_X.RData")

@@ -9,9 +9,14 @@ packages = c("dplyr","rstanarm","tidyr",
              "bayesplot","patchwork","stringr","grDevices","emojifont",
              "latex2exp","haven","ggplot2",
              "posterior","brms","remotes","future.apply",
-             "faux","rmarkdown","bookdown","tinytex","extrafont")
+             "faux","rmarkdown","bookdown","tinytex","extrafont","binom","Hmisc",
+             "ggthemes","ggtext")
 
 print("Checking and installing packages.")
+
+# create directory for data
+
+dir.create("data")
 
 ## Now load or install&load all
 package.check <- lapply(
