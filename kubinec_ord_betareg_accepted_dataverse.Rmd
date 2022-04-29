@@ -45,7 +45,7 @@ ord_Beta_mod_phi <- cmdstan_model("beta_logit_phireg.stan")
 frac_logit <-cmdstan_model("frac_logit.stan")
 
 # whether to fit all models
-run_model <- F
+run_model <- T
 
 # to reproduce results, change if you want fresh sampling
 
@@ -373,10 +373,10 @@ all_sim %>%
   select(`Proportion S Errors`="s_err",N,Power,
          `M Errors`="m_err",Variance="var_marg",model) %>% 
   gather(key = "type",value="estimate",-model,-N) %>% 
-  filter(!is.na(model)) %>% 
   #filter(model %in% c("OLS","Ordered Beta Regression",'ZOIB',"Fractional")) %>% 
   mutate(model=factor(model, 
                       levels=c("Ordered Beta Regression",'ZOIB',"OLS","Fractional"))) %>% 
+    filter(!is.na(model)) %>% 
   ggplot(aes(y=estimate,x=N)) +
   #geom_point(aes(colour=model),alpha=0.1) +
   stat_smooth(aes(colour=model,linetype=model),method="gam",formula = y ~ s(x, bs = "cs")) + 

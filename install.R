@@ -7,7 +7,7 @@
 packages = c("dplyr","rstanarm","tidyr",
              "lubridate","loo","kableExtra",
              "bayesplot","patchwork","stringr","grDevices","emojifont",
-             "latex2exp","haven","ggplot2",
+             "latex2exp","haven","ggplot2","moments",
              "posterior","brms","remotes","future.apply",
              "faux","rmarkdown","bookdown","tinytex","extrafont","binom","Hmisc",
              "ggthemes","ggtext")
