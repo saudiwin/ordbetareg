@@ -22,15 +22,15 @@ frac_mod <- cmdstanr::cmdstan_model("frac_logit.stan")
 set.seed(772235)
 
 # number of draws per sample size
-draws <- 1
+draws <- 100
 
 # let's do some simulations
 
 simul_data <- tibble(N=rep(c(25,50,75,seq(100,3000,by=200)),each=draws)) %>% 
-                     mutate(k=5,
-                     rho=.7,
-                     phi=2,
-                     cutpoints1=-3) %>% 
+  mutate(k=5,
+         rho=.7,
+         phi=2,
+         cutpoints1=-3) %>% 
   mutate(cutpoints2=2,
          X_beta=list(c(-1,1,-1,1,-1)))
 

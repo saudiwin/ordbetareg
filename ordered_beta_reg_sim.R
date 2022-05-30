@@ -23,7 +23,7 @@ set.seed(772235)
 
 # let's do some simulations
   
-N_rep <- 10
+N_rep <- 10000
 
 simul_data <- tibble(N=round(runif(N_rep,100,4000),0),
                      k=floor(runif(N_rep,1,15)),

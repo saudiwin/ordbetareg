@@ -12,7 +12,7 @@ output:
 author: |
   | Robert Kubinec
   | New York University Abu Dhabi
-abstract: "I propose a new model, ordered Beta regression, for continuous distributions with both lower and upper bounds, such as data arising from survey slider scales, visual analog scales, and dose-response relationships. This model employs the cutpoint technique popularized by ordered logit to fit a single linear model to both continuous (0,1) and degenerate [0,1] responses. The model can be estimated with or without observations at the bounds, and as such is a general solution for this type of data. Employing a Monte Carlo simulation, I show that the model is noticeably more efficient than ordinary least squares regression, zero-and-one-inflated Beta regression, re-scaled Beta regression and fractional logit while fully capturing nuances in the outcome. I apply the model to a replication of the Aidt  and Jensen (2012) study of suffrage extensions in Europe. The model can be fit with the R package `ordbetareg` to facilitate hierarchical, dynamic and multivariate modeling.^[For a reproducible version of this paper, please see the Github repository https://github.com/saudiwin/ordBetareg. To see how to fit the model with R package `ordbetareg`, which includes a full range of regression model options including multilevel/hierarchical models. I thank Adam Slez, Stijn Masschelein, Jonas Kristoffer Lindeløv, Matti Vuorre and anonymous reviewers for helpful comments.]"
+abstract: "I propose a new model, ordered Beta regression, for continuous distributions with both lower and upper bounds, such as data arising from survey slider scales, visual analog scales, and dose-response relationships. This model employs the cutpoint technique popularized by ordered logit to fit a single linear model to both continuous (0,1) and degenerate [0,1] responses. The model can be estimated with or without observations at the bounds, and as such is a general solution for this type of data. Employing a Monte Carlo simulation, I show that the model is noticeably more efficient than ordinary least squares regression, zero-and-one-inflated Beta regression, re-scaled Beta regression and fractional logit while fully capturing nuances in the outcome. I apply the model to a replication of the Aidt  and Jensen (2012) study of suffrage extensions in Europe. The model can be fit with the R package `ordbetareg` to facilitate hierarchical, dynamic and multivariate modeling."
 ---
 
 ```{r setup, include=F}
@@ -45,7 +45,7 @@ ord_Beta_mod_phi <- cmdstan_model("beta_logit_phireg.stan")
 frac_logit <-cmdstan_model("frac_logit.stan")
 
 # whether to fit all models
-run_model <- T
+run_model <- F
 
 # to reproduce results, change if you want fresh sampling
 
@@ -130,9 +130,9 @@ This exchangeability, however, comes at a cost of over-fitting the distribution 
 
 # Model
 
-To resolve the problem of over-parameterization in the ZOIB, I present *ordered* Beta regression. The main difference between this approach and the ZOIB model is to induce dependence between the three probabilities $\alpha$, $\gamma$ and $\delta$. To do so, I borrow ideas from the literature on the ordered (cumulative) logit model [@ologit1980]. 
+To resolve the problem of over-parameterization in the ZOIB, I present *ordered* Beta regression. The main difference between this approach and the ZOIB model is to induce dependence between the three probabilities $\alpha$, $\gamma$ and $\delta$. To do so, I borrow ideas from the literature on the ordered (cumulative) logit model [@ologit1980].
 
-To  give the intuition behind the model, I first define it in terms of measuring individual preferences. Suppose data is being collected on the preferences of individual $i$ over an outcome that is continuous in $\mathbb{R}^1$. We can denote these latent preferences as $y_i^*$. We collected a set of measurements $y_i$ for each individual in our sample concerning their preferences. However, because we cannot represent $\mathbb{R}^1$ in a limited space, we can only collect data using a bounded scale, resulting in a biased estimate of true preferences $y_i^*$ for those with preferences above or below the bounds of the scale.
+To give the intuition behind the model, I first define it in terms of measuring individual preferences. Suppose data is being collected on the preferences of individual $i$ over an outcome that is continuous in $\mathbb{R}^1$. We can denote these latent preferences as $y_i^*$. We collected a set of measurements $y_i$ for each individual in our sample concerning their preferences. However, because we cannot represent $\mathbb{R}^1$ in a limited space, we can only collect data using a bounded scale, resulting in a biased estimate of true preferences $y_i^*$ for those with preferences above or below the bounds of the scale.
 
 While we cannot directly observe $y_i^*$, we can obtain estimates of our uncertainty in using a bounded scale as a stand-in for true preferences. We can think of the distribution of our measurements $y_i$ as being a realization of a latent cumulative distribution function $F(y_i^*)$ defined by a set of ordered cutpoints $\{k1,k2: k1<k2\}$. Each cutpoint represents the point at which the bounds of the observed scale become more likely than the continuous values. The farther past the cutpoint an individual's preferences are, the more likely that individual will provide a measured value of $y_i$ at the bound. Providing estimated locations for these cutpoints in $F(y_i^*)$ will permit us to also estimate the approximate intensity of preferences that are lost in the data measurement process, and consequently correct for bias in the reported data.
 
@@ -154,7 +154,7 @@ We can see that we can still obtain the necessary probabilities $\alpha$ ($Pr(y_
 
 In terms of latent utility, the position of the cutpoints defines the potential loss of information about an individual. If the cutpoints increase, then there would seem to be more bunching around the end of the observed scale and consequently only higher levels of $y_i^*$ are associated with observations at the bounds. As the cutpoints decrease towards zero, there is no clear break in the distribution around the bounds and consequently little reason to expect significant bias. As can be seen in \@ref(eq:redef), if both $k_1=0$ and $k_2=0$, then the probability of $\delta$, or a continuous observation, is simply equal to $\text{Beta}(g(X'\beta),\phi)$, i.e. there is no need to adjust the observed data and the probability of a degenerate outcome increases in tandem with the continuous outcomes.
 
-This is another important distinction between the ordered beta regression and the ZOIB model--both treat responses at the bounds as qualitatively different than the continuous responses in some sense, but the ordered beta regression allows the extent of difference to be a smooth function of the data. As I describe in the Discussion section, the ZOIB can be more helpfully thought of as a type of selection model in which cases can select into and out of continuous responses. In this framework, a degenerate response of 0 is equally distinct from all continuous  responses regardless of their proximity to 0. By contrast, the ordered beta model is more appropriate when the outcome is a single, possibly latent, scale, and the bounds of the scale are qualitatively different from continuous responses mainly in terms of strength or intensity, not type.
+This is another important distinction between the ordered beta regression and the ZOIB model--both treat responses at the bounds as qualitatively different than the continuous responses in some sense, but the ordered beta regression allows the extent of difference to be a smooth function of the data. As I describe in the Discussion section, the ZOIB can be more helpfully thought of as a type of selection model in which cases can select into and out of continuous responses. In this framework, a degenerate response of 0 is equally distinct from all continuous responses regardless of their proximity to 0. By contrast, the ordered beta model is more appropriate when the outcome is a single, possibly latent, scale, and the bounds of the scale are qualitatively different from continuous responses mainly in terms of strength or intensity, not type.
 
 The implication of using ordered cutpoints means that only two parameters, the cutpoints themselves, are required in addition to the auxiliary parameter $\phi$. Thus only two parameters more than OLS are required to fit this model, improving considerably efficiency and information retrieval relative to the ZOIB, as will be shown in the simulations. It is possible to expand the model by permitting thresholds to vary by groups, as in the graded response model [@samejima1997], although I do not consider those extensions here. This type of heterogeneity could improve model fit, but sample-average cutpoints are appropriate when subgroup-level differences are not the primary aim of the analysis.
 
@@ -275,10 +275,11 @@ my_conf_fun <- function(x) {
                   ymin=bi_ci$lower,
                   ymax=bi_ci$upper))
   } else {
-    boot_ci <- Hmisc::smean.cl.boot(x)
-    return(list(y=boot_ci["Mean"],
-                  ymin=boot_ci["Lower"],
-                  ymax=boot_ci["Upper"]))
+    boot_ci <- boot::boot(x,statistic=function(x,i) median(x[i]),R=1000)
+    boot_cov <- boot::boot.ci(boot_ci, type="basic")
+    return(list(y=boot_ci$t0,
+                  ymin=boot_cov$basic[1,4],
+                  ymax=boot_cov$basic[1,5]))
   }
 }
 
@@ -329,7 +330,7 @@ all_sim_calc <- all_sim %>%
   select(Statistic="type",
          Model="model",
          `5%`="lower",
-         `Mean`="med_est",
+         `Median`="med_est",
          `95%`="upper") %>% 
   kable(caption="Comparison of Simulation Diagnostics",
         label = "comparebase",
@@ -544,7 +545,7 @@ tibble(therm=model_data$therm*100) %>%
 
 ```
 
-A histogram of the dependent variable (normalized to [0,1]) is shown in Figure \@ref(fig:loaddata). The figure reveals significant bunching around the lower end of the scale, and more modest bunching at the upper end of the scale. I plot the estimated location of the cutpoints from an ordered Beta regression fit as vertical dashed lines over the histogram, showing that there is substantial reason to believe that the end points are qualitatively different from the continuous responses. As such, it is potentially a useful empirical application for the ordered beta regression model, as underlying the scale is a single-dimensional latent concept--inclusion in the electoral system--but also reason to believe that moving from a suffrage value of 0 to 0.1 (at least some inclusion) entails larger changes in the latent variable than a transition from 0.1 to 0.2 or 0.5 to 0.6.
+A histogram of the dependent variable (normalized to \[0,1\]) is shown in Figure \@ref(fig:loaddata). The figure reveals significant bunching around the lower end of the scale, and more modest bunching at the upper end of the scale. I plot the estimated location of the cutpoints from an ordered Beta regression fit as vertical dashed lines over the histogram, showing that there is substantial reason to believe that the end points are qualitatively different from the continuous responses. As such, it is potentially a useful empirical application for the ordered beta regression model, as underlying the scale is a single-dimensional latent concept--inclusion in the electoral system--but also reason to believe that moving from a suffrage value of 0 to 0.1 (at least some inclusion) entails larger changes in the latent variable than a transition from 0.1 to 0.2 or 0.5 to 0.6.
 
 ```{r fitordreg,include=F}
   
@@ -752,23 +753,23 @@ alpha) %>% bind_rows
   
   
   if(run_model) {
-    Beta_trans_fit <- brm(bf(update(model_spec,therm_rescale~.),decomp="QR"),
+    beta_trans_fit <- brm(bf(update(model_spec,therm_rescale~.),decomp="QR"),
                                  data=model_data,
                           chains=2,cores=2,iter=1000,
                           backend="cmdstanr",family="beta",
                                  seed=random_seed)
     
-    saveRDS(Beta_trans_fit,"Beta_trans_fit.rds")
+    saveRDS(beta_trans_fit,"beta_trans_fit.rds")
   } else {
     # rstanarm not working with reloaded models
-    Beta_trans_fit <- readRDS("Beta_trans_fit.rds")
+    beta_trans_fit <- readRDS("beta_trans_fit.rds")
   }
   
   
-  yrep_Beta_trans <- posterior_epred(Beta_trans_fit)[,sample_all]
+  yrep_Beta_trans <- posterior_epred(beta_trans_fit)[,sample_all]
   
   # drop phi
-  X_beta_trans <- as.matrix(Beta_trans_fit)
+  X_beta_trans <- as.matrix(beta_trans_fit)
   
   X_beta_trans <- X_beta_trans[,1:77]
   
@@ -906,7 +907,7 @@ loo_ord <- fit_pew$loo("ord_log")
 loo_zoib <- zoib_fit$loo("zoib_log")
 loo_lm <- loo(log_lik(pew_fit_lm)[,sample_all])
 loo_frac <- loo(frac_fit$draws("frac_log")[,,sample_all])
-loo_trans <- loo(log_lik(Beta_trans_fit)[,sample_all])
+loo_trans <- loo(log_lik(beta_trans_fit)[,sample_all])
 ```
 
 I fit each of the models in the simulation to the empirical data. Unfortunately, as I do not know the "true" sample average marginal effects, I cannot calculate M-error or S-error rates, nor can I directly compare the variance of the estimates to each other. However, I do calculate RMSE, $\hat{elpd}_{psis_loo}$, total marginal effect variance and the effective number of parameters, which is shown in Figure \@ref(fig:modcompare). It should be noted that the QR decomposition affected the number of parameters calculation, deflating the total number, especially for the ZOIB. Nonetheless, the ordered beta regression model is still noticeably less complex, and estimates marginal effects with remarkably higher precision. Only the Beta regression model on transformed values has higher precision, and as I explain later, this is most likely a sign of model mis-fit rather than an actual increase in information.
@@ -935,7 +936,7 @@ rmse_frac <- apply(yrep_frac,1,function(c) sqrt(mean((c-model_data$therm[sample_
 # 
 # kurt_zoib <- apply(as_draws_matrix(zoib_fit$draws("zoib_regen")),1,moments::kurtosis)
 # 
-# kurt_Beta_trans <- apply(as.matrix(posterior_predict(Beta_trans_fit)),1,moments::kurtosis)
+# kurt_Beta_trans <- apply(as.matrix(posterior_predict(beta_trans_fit)),1,moments::kurtosis)
 # 
 # kurt_frac <- apply(yrep_frac,1,moments::kurtosis)
 
@@ -1031,7 +1032,7 @@ On the other hand, we see that ordered Beta regression does quite well in RMSE a
 
 It should be noted here and later that the fractional logit under-performed. This is most likely due to the prevalence of continuous responses; fractional logit is derived from the binomial distribution and so it will usually perform better when the responses are at the extremes rather than in the middle of the distribution. The peculiarly low effective number of parameters for fractional logit and the transformed Beta regression, combined with the models' higher variance and poor predictive performance, suggests that these ad hoc approaches do not compare with Beta regression variants that directly model the unique features of bounded distributions.
 
-Figure \@ref(fig:postpred) shows draws of the posterior predictive distribution in gray with the empirical (true) distribution in blue. OLS is the only one of the models considered that predicts outside of [0,1]. In general, it would seem that OLS, ZOIB and ordered beta regression have the best overall fit to the distribution (so long as OLS' out-of-sample predictions are ignored). OLS fits the lower continuous mode better while ZOIB and ordered beta fit the higher mode more closely. The fractional logit tends to over-emphasize the degenerate responses and under-emphasize the continuous responses, while the transformed Beta plot reveals that the transformation does induce serious model misfit.
+Figure \@ref(fig:postpred) shows draws of the posterior predictive distribution in gray with the empirical (true) distribution in blue. OLS is the only one of the models considered that predicts outside of \[0,1\]. In general, it would seem that OLS, ZOIB and ordered beta regression have the best overall fit to the distribution (so long as OLS' out-of-sample predictions are ignored). OLS fits the lower continuous mode better while ZOIB and ordered beta fit the higher mode more closely. The fractional logit tends to over-emphasize the degenerate responses and under-emphasize the continuous responses, while the transformed Beta plot reveals that the transformation does induce serious model misfit.
 
 ```{r postpred,fig.cap="Comparison of Sample to Posterior Empirical Cumulative Distribution for Models"}
 
@@ -1048,7 +1049,7 @@ zoib_dens <- ppc_dens_overlay(model_data$therm[sample_all],as_draws_matrix(zoib_
   ggtitle("ZOIB")
 frac_dens <- ppc_dens_overlay(as.numeric(model_data$therm[sample_all]),yrep_frac[sample_rows1,]) +
   ggtitle("Fractional")
-Beta_trans_dens <- ppc_dens_overlay(as.numeric(model_data$therm[sample_all]),as.matrix(posterior_predict(Beta_trans_fit,))[sample(1:nrow(yrep_Beta_trans),100),sample_all]) +
+Beta_trans_dens <- ppc_dens_overlay(as.numeric(model_data$therm[sample_all]),as.matrix(posterior_predict(beta_trans_fit,))[sample(1:nrow(yrep_Beta_trans),100),sample_all]) +
     ggtitle("Transformed\nBeta") + 
     ylab("Empirical Density")
 lm_dens + ord_dens + zoib_dens + Beta_trans_dens + frac_dens +
@@ -1327,7 +1328,7 @@ Given these discrepancies between the ZOIB and the ordered beta regression, I co
 
 The ZOIB could then be understood as an even more specific case of the zero-or-one model in which selection could occur at both ends of the response. That is, units could begin in one category (0), proceed through a continuous process (0,1), and then end in a separate category (1). While this type of situation can certainly occur, it is a more specific process than selection at only one end of the scale as the zero-or-one model proposes.
 
-As such, while the ZOIB and ordered beta regression can fit a [0,1] distribution accurately, and can even return similar marginal effects, they make quite different statements about how degenerate responses are produced. The ordered beta model considers all of the response to be generated by a single latent process, which permits more precise estimation and also a clear interpretation about what the underlying components of the parameters mean. If a scholar is looking to model a single bounded continuous scale, ordered beta regression should provide a reasonable fit to the data and meaningful covariate estimates.
+As such, while the ZOIB and ordered beta regression can fit a \[0,1\] distribution accurately, and can even return similar marginal effects, they make quite different statements about how degenerate responses are produced. The ordered beta model considers all of the response to be generated by a single latent process, which permits more precise estimation and also a clear interpretation about what the underlying components of the parameters mean. If a scholar is looking to model a single bounded continuous scale, ordered beta regression should provide a reasonable fit to the data and meaningful covariate estimates.
 
 <!--# In fact, due to the employment of weakly informative priors, it is even possible to fit the ordered Beta regression model to distributions without any degenerate responses. These estimations can still be useful when the analyst believes degenerate responses could have risen, but did not in the particular sample of data under analysis. This type of situation is likely to arise when the data come in repeated samples, such as approval rating polls aggregated over time.   -->
 
@@ -1338,5 +1339,13 @@ As such, while the ZOIB and ordered beta regression can fit a [0,1] distribution
 # Conclusion
 
 This paper presented a new model for bounded continuous distributions with considerable observations on the bounds. This paper builds on prior models in the literature incorporating the Beta distribution, which has admirable properties for evaluating the unique features of bounded data. The extension of Beta regression to cover degenerate responses at the bounds is made possible by employing cutpoints that permit the 0 and 1 values to be jointly estimated with the Beta distribution. Compared to existing approaches, particularly zero-and-one inflated Beta regression (ZOIB) and OLS, ordered Beta regression is able to capture a more precise and interpretable marginal effect of a given covariate on the outcome over the full response range.
+
+# Acknowledgements
+
+I thank Adam Slez, Stijn Masschelein, Jonas Kristoffer Lindeløv, Matti Vuorre and anonymous reviewers for helpful comments.
+
+# Data Availability Statement
+
+Replication code for this article is available at @kubinec2022 at <https://doi.org/10.7910/DVN/5XYO7O>. For a reproducible version of this paper, please see the Github repository <https://github.com/saudiwin/ordbetareg>. The R package `ordbetareg`, available on CRAN, includes a full range of model specifications for ordered beta regression, including multilevel/hierarchical models.
 
 # References

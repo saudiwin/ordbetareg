@@ -10,7 +10,7 @@ packages = c("dplyr","rstanarm","tidyr",
              "latex2exp","haven","ggplot2","moments",
              "posterior","brms","remotes","future.apply",
              "faux","rmarkdown","bookdown","tinytex","extrafont","binom","Hmisc",
-             "ggthemes","ggtext")
+             "ggthemes","ggtext","boot")
 
 print("Checking and installing packages.")
 
