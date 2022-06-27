@@ -26,6 +26,8 @@ set.seed(07012022)
 
 Limited dependent variables, or continuous variables with lower and upper bounds, are quite common in the social sciences but do not fit easily with existing statistical models. In this Rmarkdown document, I show why these issues are important to consider when modeling your data, discuss existing R packages useful for fitting these models, and also present `ordbetareg`, [an R package](https://cran.r-project.org/web/packages/ordbetareg/index.html) with a new variant of Beta regression that builds on and simplifies existing approaches (see [paper here](https://osf.io/preprints/socarxiv/2sx6y/) that is forthcoming in **Political Analysis**). In essence, `ordbetareg` offers a drop-in replacement for OLS that respects the bounds of a dependent variable. 
 
+You can get a copy of the Rmarkdown document [here](https://github.com/saudiwin/ordbetareg/blob/master/limited_dv_modeling.Rmd) if you want to run the file yourself.
+
 Although I argue that `ordbetareg` is as useful or more useful than existing packages, I provide a broad overview in this document so that the reader can gain an appreciation for the range of work on this topic, as well as the pros and cons of existing models. 
 
 # Simulation
@@ -57,7 +59,7 @@ As can be seen, the bounds of the plot are now much wider. The max value from th
 
 ### Beta Regression
 
-While OLS cannot handle bounds, there is another distribution that is continuous and bounded above or below--the Beta distribution. The Beta distribution is related to the binomial distribution, and it can be thought of as a prior distribution for the probability of a successful trial in a binomial/Bernoulli distribution. The Beta distribution has two parameters, usually denoted $\alpha$ and $\beta$, which represent the number of prior successes and failures. For example, suppose we want to come up with our best guess of how Donald Trump might do in the 2024 presidential election given his performance in the 2020 election in terms of the number of electoral votes he received (which are roughly proportional to the popular vote for president in the United States). In that case, we could use the Beta distribution to get a sense of our uncertainty in that statement by plugging in 232 for the number of electors Trump won in 2020 for $\alpha$ and 306 for the number of electors that Trump didn't win for $\beta$--i.e., all the electors Joe Biden won in 2020:
+While OLS cannot handle bounds, there is another distribution that is continuous and bounded above or below--the Beta distribution. The Beta distribution is related to the binomial distribution, and it can be thought of as a prior distribution for the probability of a successful trial in a binomial/Bernoulli distribution. The Beta distribution has two parameters, usually denoted $\alpha$ and $\beta$, which represent the number of prior successes and failures. For example, suppose we want to come up with our best guess of how Donald Trump might do in the 2024 presidential election given his performance in the 2020 election in terms of the number of electoral college votes he received (which are roughly proportional to the popular vote for president in the United States). In that case, we could use the Beta distribution to get a sense of our uncertainty in that statement by plugging in 232 for the number of electors Trump won in 2020 for $\alpha$ and 306 for the number of electors that Trump didn't win for $\beta$--i.e., all the electors Joe Biden won in 2020:
 
 ```{r trump_elec}
 
@@ -67,7 +69,7 @@ hist(electors)
 
 ```
 
-What the plot above shows is the range of uncertainty around the proportion of electors that Trump could win in 2024 if we use his 2020 performance as our prior knowledge. We would expect, based on chance alone, for his 2024 total to vary between 40% of electors to 48% of electors. In other words, he would be likely to still lose, but he could get a lot closer to a majority of electoral votes. 
+What the plot above shows is the range of uncertainty around the proportion of electors that Trump could win in 2024 if we use his 2020 performance as our prior knowledge. We would expect, based on chance alone, for his 2024 total to vary between 40% of electors to 48% of electors. In other words, he would be likely to still lose, but he could get a lot closer to a majority of electoral college votes. 
 
 In a sense, the Beta distribution is a distribution of probabilities. The probability represents the chance of success in an independent trial, in this case winning an elector. If we increase the sample size, say by including how many electoral votes Trump won in 2016 (304 out of 531), our uncertainty would decrease:
 
@@ -190,7 +192,7 @@ plot(N,max_y_j)
 
 As can be seen, the value of the highest or lowest value in the distribution gets nudged closer and closer to 0 or 1 as $N$ gets larger. This means that we get increasingly implausible outliers as $N$ grows in a function that is highly non-linear. This will strongly effect estimates, as I show in [my paper's simulation](https://osf.io/preprints/socarxiv/2sx6y/). My main reason for bringing up this fix is to discourage its use given these dangerous side effects.
 
-However, there has been substantial developments in the past 10 years that provide much more satisfactory ways of helping the Beta distribution deal with bounds. The most well-known recent methodology to fix the Beta distribution's issues are known as the zero-or-one and zero-and-one beta regression models (also called the ZOIB). These combo models add distinct sub-models for the discrete responses at 0 or 1. The zero-or-one can model either 0s or 1s plus a continuous Beta regression, but not both 0s and 1s at the same time, while the zero-and-one can model 0s, 1s, and everything in between with a Beta regression. Because it is a general solution, I'll look at the zero-and-one formulation before turning to my model, which was developed in response limitations in the ZOIB. 
+However, there has been substantial developments in the past 10 years that provide much more satisfactory ways of helping the Beta distribution deal with bounds. The most well-known recent methodology to fix the Beta distribution's issues are known as the zero-or-one and zero-and-one beta regression models (also called the ZOIB). These combo models add distinct sub-models for the discrete responses at 0 or 1. The zero-or-one can model either 0s or 1s plus a continuous Beta regression, but not both 0s and 1s at the same time, while the zero-and-one can model 0s, 1s, and everything in between with a Beta regression. Because it is a general solution, I'll look at the zero-and-one formulation before turning to my model. I developed ordered beta regression specifically to deal with limitations in the ZOIB. 
 
 We can represent the ZOIB mathematically in terms of three distinct probabilities for a bounded response $y_i$: $Pr(y_i=0)$ for the responses that equal 0, $Pr(y_i=1)$ for the responses that equal 1, and $Pr(y_i>0 \cap y_i<1)$ for the responses that are continuous (strictly between 0 and 1). In the formula below, I use  $\alpha$ for $Pr(y_i=0)$, $\gamma$ for $Pr(y_i=1)$, and $\delta$ for $Pr(y_i>0 \cap y_i<1)$. The parameters $\mu$ and $\phi$ represent the mean and dispersion of the Beta regression that can be used for the continuous responses. As can be seen, the ZOIB can handle any type of response:
 
@@ -242,7 +244,7 @@ For simplicity, we will use a single covariate, to what extent "power is distrib
 hist(vdem$appoint_chamber)
 ```
 
-The plot shows that most scores are equal to 1, indicating all seats are elected via popular vote. There are some legislatures, though, where everyone is appointed, and some where there are some who are appointed and elected. These countries include the following:
+The plot shows that most scores are equal to 100, indicating all seats are elected via popular vote. There are some legislatures, though, where everyone is appointed, and some where there are some who are appointed and elected. These countries include the following:
 
 ```{r appoitn_elect}
 filter(vdem, appoint_chamber>0, appoint_chamber<100) %>% 
@@ -260,7 +262,7 @@ hist(vdem$power_groups)
 ```
 
 
-To test this question, I will fit models for each of the types of statistical distributions I have presented, including OLS, fractional logit, re-scaled Beta regression (normalizing to between 0 and 1), ZOIB, and ordered beta regression. I will first rescale the outcome to be between 0 and 1 instead of 0 and 100, as V-DEM coded it. This is necessary for some of the R packages:
+To test this question, I will fit models for each of the types of statistical distributions I have presented, including OLS, fractional logit, re-scaled Beta regression (normalizing to between 0 and 1), ZOIB, and ordered beta regression. I will first rescale the outcome to be between 0 and 1 instead of 0 and 100, as V-DEM coded it. This is necessary for some of the R packages, but does not affect the substantive results. In fact, any bounded variable can be rescaled to 0 and 1 using a [simple formula](https://stats.stackexchange.com/questions/70801/how-to-normalize-data-to-0-1-range).
 
 ```{r}
 vdem$appoint_chamber <- vdem$appoint_chamber/100
@@ -278,7 +280,7 @@ summary(lm_est)
 
 Our intuitions could be partly confirmed: as social groups become more powerful, seats are more likely to be elected, but only up to a point. Above that point, they in fact become more likely to be appointed. To figure out what the relationship looks like, we can use `lm`'s `predict` function for varying values of `power_groups`, and plot the result:
 
-```{r pred_lm,fig.cap="OLS Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
+```{r predlm,fig.cap="OLS Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
 ex_data <- seq(min(vdem$power_groups),
                max(vdem$power_groups),length.out=100)
 
@@ -299,13 +301,13 @@ ggplot(mapping=aes(y=lm_pred$fit,x=ex_data)) +
 
 The plot shows that when the power of social groups is equal to +2, most seats are elected, but when the power of social groups is equal to +3, fewer than all seats are elected. So in other words, when social groups are the most powerful, at least some seats are appointed. When social groups have little if any power, all seats are likely to be appointed.
 
-One issue is that this prediction is close to the maximum of the scale: `r max(lm_pred$fit)`. While OLS doesn't predict out of bounds, the confidence interval of the prediction is likely to exceed zero. We can test that by getting the prediction error:
+One issue is that this prediction is close to the maximum of the scale: `r max(lm_pred$fit)`. While OLS doesn't predict out of bounds in this example, the confidence interval of the prediction is likely to exceed zero. We can test that by examining the maximum of the confidence interval:
 
 ```{r max_ols}
 max(lm_pred$fit + 2*lm_pred$se.fit)
 ```
 
-We can see that high end of the 5% to 95% confidence interval reaches 1.09. In other words, OLS predicts that when social groups are moderately powerful, 109% of seats will be elected. This possibility, of course, is ridiculous, and makes no sense given our scale. Again, OLS can't respect bounds, which means that we can get intervals that can't be mapped on to the underlying scale in a meaningful sense.
+We can see that high end of the high end 5% to 95% confidence interval reaches 1.09. In other words, OLS predicts that when social groups are moderately powerful, 109% of seats will be elected. This possibility, of course, is ridiculous, and makes no sense given our scale. Again, OLS can't respect bounds, which means that we can get intervals that can't be mapped on to the underlying scale in a meaningful sense.
 
 ### Fractional Logit
 
@@ -319,7 +321,7 @@ summary(frac_logit_est)
 
 Interestingly, we do not see the same relationship. Fractional logit does not find a very strong quadratic effect, and instead only a linear effect of the power of social groups on the share of elected seats. We can replicate our prediction to see what the estimates look like:
 
-```{r pred_frac,fig.cap="Fractional Logit Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
+```{r predfrac,fig.cap="Fractional Logit Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
 
 pred_power_groups_frac <- predict(frac_logit_est,type="response",se.fit = T,
                                   newdata=tibble(power_groups=ex_data))
@@ -342,11 +344,11 @@ As can be seen, this model is not identical to OLS. However, it does have the pr
 max(pred_power_groups_frac$fit + 2*pred_power_groups_frac$se.fit)
 ```
 
-The max prediction isn't exactly one, but very close. The small increase above 1 is due to the limits of the Normal approximation used to calculate the confidence interval. Compared to OLS, the fractional logit does respect the boundaries. However, compared to the beta regression variants that we turn to next, it is not as powerful a tool. There is no easy way, for example, to know why the estimated coefficients are so different than OLS because we cannot simulate data from the fractional logit "quasi-likelihood" as we can with the other distributions.
+The max confidence interval isn't exactly one, but very close. The small increase above 1 is due to the limits of the Normal approximation used to calculate the confidence interval. Compared to OLS, the fractional logit does respect the boundaries. However, compared to the beta regression variants that we turn to next, it is not as powerful a tool. There is no easy way, for example, to know why the estimated coefficients are so different than OLS because we cannot simulate data from the fractional logit "quasi-likelihood" as we can with the other distributions.
 
 ### (Vanilla) Beta Regression
 
-Next I turn to the Beta regression, which employs the same distribution shown earlier but with a linear model to predict the average value of the outcome. There is some work that needs to be done to convert the Beta distribution to a regression model, but I'll refer the reader to [other sources for that info](https://www.tandfonline.com/doi/abs/10.1080/0266476042000214501?casa_token=HANTRJ9Y7nYAAAAA:TXJEoNOwWWCyOGY6mNukiEPQYGE6rnF2Ck8BiiLIqoub-PFE08-uDTeDVc_8WTzuwm9dRR1Uqb9Lqg). We can use the R package `gam` to do the modeling using maximum likelihood with a family from the `mgcv` package.
+Next I turn to the Beta regression, which employs the same distribution shown earlier but with a linear model to predict the average value of the outcome. There is some work that needs to be done to use the Beta distribution as a regression model, but I'll refer the reader to [other sources for that info](https://www.tandfonline.com/doi/abs/10.1080/0266476042000214501?casa_token=HANTRJ9Y7nYAAAAA:TXJEoNOwWWCyOGY6mNukiEPQYGE6rnF2Ck8BiiLIqoub-PFE08-uDTeDVc_8WTzuwm9dRR1Uqb9Lqg). We can use the R package `gam` to do the modeling using maximum likelihood with a family from the `mgcv` package.
 
 Unfortunately, we can't fit the model without adjusting the data as we have observations at the bounds, i.e. we have legislatures with either 0% elected seats or 100% elected seats. We'll have to use the transformation mentioned earlier to model the data. We could also just exclude observations at the bounds, but of course that would also introduce bias unless the observations at the bounds were randomly assigned to those values (highly unlikely).
 
@@ -361,7 +363,7 @@ summary(fit_beta_reg)
 
 Interestingly, we do now see some similarities to OLS in terms of a marginally declining effect of `power_groups` at very high levels of `power_groups`. We can also look at predicted values, which of course will be in the transformed (nudged) outcome scale:
 
-```{r pred_beta_reg,fig.cap="Beta Regression Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
+```{r predbetareg,fig.cap="Beta Regression Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
 
 pred_beta_reg <- predict(fit_beta_reg,type="response",se.fit=T,
                                   newdata=tibble(power_groups=ex_data))
@@ -403,7 +405,7 @@ The model for continuous values is reported without a prefix (`power_groups`) wh
 
 These results are interesting but quite complicated. If we want to get one overall effect, we actually have to go a second step and calculate predictions that average over all 3 submodels. We can do that with the `conditional_effects` function from `brms`:
 
-```{r zoib_pred,fig.cap="OLS Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
+```{r zoibpred,fig.cap="OLS Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
 
 zoib_pred <- conditional_effects(fit_zoib_est)[[1]]
 
@@ -420,13 +422,13 @@ zoib_pred %>%
        x="Power of Social Groups")
 ```
 
-Marginal effects are different than predictions because what we have is the effect of `power_groups` on `appoint_chamber` rather than the predicted level of `appoint_chamber`. The ultimate result shows that increasing levels of social group power is associated with greater numbers of appointed seats up until fairly high levels of power. At the highest levels, there does not seem to be much of a relationship. As a result, it would seem that the ZOIB model has a different spin than OLS, showing really strong associations at lower levels of social group power but little association at high levels of group power.
+We can see in this plot that increasing levels of social group power are associated with greater numbers of appointed seats up until fairly high levels of group power. At the highest levels, there does not seem to be much of a relationship. As a result, it would seem that the ZOIB model has a different spin than OLS, showing really strong associations at lower levels of social group power but little association at high levels of group power.
 
-Of course, a big complication is that can't get a single effect from the model's coefficients, only by averaging over them and creating marginal effects. To address this issue, I next use ordered beta regression.
+Of course, a big complication is that we can't get a single effect from the model's coefficients, only by averaging over them and creating marginal effects. To address this issue, I next use ordered beta regression.
 
 ### Ordered Beta
 
-The ordered beta regression model, which uses the `ordbetareg` package which is itself a front-end to `brms`, uses a simpler syntax because there is only one linear model. As such, the syntax is closer to `lm` or `glm`:
+To fit the ordered beta regression model, I use the `ordbetareg` package. This package is a relatively simple which front-end to `brms`, with a simpler syntax because there is only one linear model. All of the other many features of `brms`, such as mixed/random effects, dynamic models and latent variables, can all be used with `ordbetareg`.
 
 ```{r fit_ord_beta,results="hide"}
 fit_ord_est <- ordbetareg(appoint_chamber ~ power_groups + I(power_groups^2),
@@ -440,9 +442,9 @@ We can see from the coefficients below that ordered beta regression is close to 
 summary(fit_ord_est)
 ```
 
-Although we know the relationship from the coefficients, we can also look at predicted values:w
+Although we know the relationship from the coefficients, we can also look at predicted values:
 
-```{r ord_beta_pred,fig.cap="OLS Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
+```{r ordbetapred,fig.cap="OLS Predicted Values of Elected Lower Chamber Seats Given Power of Social Groups"}
 
 ord_pred <- conditional_effects(fit_ord_est)[[1]]
 
@@ -462,7 +464,7 @@ ord_pred %>%
 
 To compare the two models directly, the plot below includes predicted values from both the ZOIB and ordered beta regression:
 
-```{r compare_coefs,fig.cap="Comparison of Ordered Beta and ZOIB Model Predictions of Elected Seats"}
+```{r comparecoefs,fig.cap="Comparison of Ordered Beta and ZOIB Model Predictions of Elected Seats"}
 
 bind_rows(ord_pred,zoib_pred,.id="Model") %>% 
   mutate(Model=factor(Model, labels=c("Ordered Beta",
@@ -484,7 +486,7 @@ The differences between these models are intriguing. First, the two models prima
 
 Next I compare ordered beta regression to all of the other estimators one by one in the plot below. The ordered beta prediction is in the dark gray ribbon:
 
-```{r compare_coefs_all,fig.cap="Comparison of Model Predictions of Elected Seats to Ordered Beta Predictions (Gray Ribbon)"}
+```{r comparecoefsall,fig.cap="Comparison of Model Predictions of Elected Seats to Ordered Beta Predictions (Gray Ribbon)"}
 
 lm_pred_df <- tibble(estimate__=lm_pred$fit,
                      power_groups=ex_data) %>% 
@@ -538,4 +540,5 @@ This plot shows that most other estimators are less precise, especially at low l
 
 # Conclusion
 
-To conclude, ordered beta regression is a parsimonious yet powerful model that combines the best features of existing models--boundaries, beta regression--while still using a simple parameterization and a single linear model. This example also shows why it is important to use an appropriate model for the outcome: while most of the models that used a limited distribution did not show a quadratic effect, OLS did find one. OLS was likely confusing the bounds of the distribution with evidence of a non-linear relationship in the data. This type of mistaken inference can be difficult to detect and is a primary reason why using an appropriate statistical distribution is such a good idea. 
+To conclude, ordered beta regression is a parsimonious yet powerful model that combines the best features of existing models--boundaries, Beta regression--while still using a simple parameterization and a single linear model. This example also shows why it is important to use an appropriate model for the outcome: while most of the models that used a limited distribution did not show a quadratic effect, OLS did find one. OLS was likely confusing the bounds of the distribution with evidence of a non-linear relationship in the data. This type of mistaken inference can be difficult to detect and is a primary reason why using an appropriate statistical distribution is such a good idea. 
+
